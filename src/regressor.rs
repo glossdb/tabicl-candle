@@ -10,11 +10,13 @@
 
 use candle_core::{Device, Tensor};
 
+use crate::power::PowerStage;
 use crate::quantile::QuantileDist;
 use crate::tabicl::TabIcl;
 
 /// The wrapper's preprocessing plane for one member: impute -> unique
-/// filter -> standard scale (z clipped to +-100) -> outlier soft clip.
+/// filter -> standard scale (z clipped to +-100) -> optional power
+/// normalization (the "power" norm method) -> outlier soft clip.
 pub struct Preprocessor {
     cols: usize,
     impute_means: Vec<f64>,
@@ -22,6 +24,7 @@ pub struct Preprocessor {
     // kept-column space from here on
     scale_mean: Vec<f64>,
     scale_scale: Vec<f64>,
+    power: Option<PowerStage>,
     clip_lower: Vec<f64>,
     clip_upper: Vec<f64>,
     /// Preprocessed training rows (row-major, kept columns), cached at
@@ -39,7 +42,18 @@ fn column(x: &[f64], cols: usize, c: usize) -> impl Iterator<Item = f64> + '_ {
 }
 
 impl Preprocessor {
+    /// The norm-"none" pipeline (the pinned member's).
     pub fn fit(x: &[f64], rows: usize, cols: usize) -> Self {
+        Self::fit_norm(x, rows, cols, false)
+    }
+
+    /// The norm-"power" pipeline: Yeo-Johnson between scaling and the
+    /// outlier stage, as the sklearn PreprocessingPipeline orders it.
+    pub fn fit_power(x: &[f64], rows: usize, cols: usize) -> Self {
+        Self::fit_norm(x, rows, cols, true)
+    }
+
+    fn fit_norm(x: &[f64], rows: usize, cols: usize, use_power: bool) -> Self {
         assert_eq!(x.len(), rows * cols);
 
         // SimpleImputer: column means over non-NaN training values
@@ -93,6 +107,15 @@ impl Preprocessor {
             .map(|(i, v)| ((v - scale_mean[i % k]) / scale_scale[i % k]).clamp(-Z_CLIP, Z_CLIP))
             .collect();
 
+        // Optional power normalization, fitted on the scaled matrix.
+        let (power, normalized) = if use_power {
+            let stage = PowerStage::fit(&scaled, rows, k);
+            let normalized = stage.transform(&scaled, rows, k);
+            (Some(stage), normalized)
+        } else {
+            (None, scaled)
+        };
+
         // OutlierRemover, stage 1: sample-std bounds over all values
         let nanstats = |data: &[f64], c: usize| -> (f64, f64) {
             let vals: Vec<f64> = column(data, k, c).filter(|v| !v.is_nan()).collect();
@@ -101,10 +124,10 @@ impl Preprocessor {
             let std = (vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / ddof as f64).sqrt();
             (mean, std.max(SCALE_EPS))
         };
-        let stage1: Vec<(f64, f64)> = (0..k).map(|c| nanstats(&scaled, c)).collect();
+        let stage1: Vec<(f64, f64)> = (0..k).map(|c| nanstats(&normalized, c)).collect();
 
         // Stage 2: recompute without the values outside stage-1 bounds
-        let cleaned: Vec<f64> = scaled
+        let cleaned: Vec<f64> = normalized
             .iter()
             .enumerate()
             .map(|(i, v)| {
@@ -130,12 +153,13 @@ impl Preprocessor {
             kept,
             scale_mean,
             scale_scale,
+            power,
             clip_lower,
             clip_upper,
             x_train: Vec::new(),
             n_train: rows,
         };
-        prep.x_train = prep.soft_clip(scaled);
+        prep.x_train = prep.soft_clip(normalized);
         prep
     }
 
@@ -151,7 +175,8 @@ impl Preprocessor {
     }
 
     /// The test-time path: impute with training means, filter, scale,
-    /// soft clip. Returns row-major (rows, n_kept()).
+    /// optional power normalization, soft clip. Returns row-major
+    /// (rows, n_kept()).
     pub fn transform(&self, x: &[f64], rows: usize) -> Vec<f64> {
         assert_eq!(x.len(), rows * self.cols);
         let scaled: Vec<f64> = (0..rows)
@@ -162,7 +187,11 @@ impl Preprocessor {
                 ((v - self.scale_mean[i]) / self.scale_scale[i]).clamp(-Z_CLIP, Z_CLIP)
             })
             .collect();
-        self.soft_clip(scaled)
+        let normalized = match &self.power {
+            Some(stage) => stage.transform(&scaled, rows, self.kept.len()),
+            None => scaled,
+        };
+        self.soft_clip(normalized)
     }
 
     pub fn n_kept(&self) -> usize {

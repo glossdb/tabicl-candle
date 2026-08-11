@@ -15,12 +15,14 @@ pub mod attention; // MHA + the pre-norm block; K/V slicing, no masks
 pub mod classifier; // the classifier wrapper, pinned to one member
 pub mod config;
 pub mod embedding; // feature grouping, SkippableLinear, y-encoders
+pub mod ensemble; // multi-member regressor: shuffles x norms, mean bands
 pub mod icl; // ICL transformer, train-prefix attention
 pub mod isab; // induced self-attention blocks
 pub mod nn; // Linear / LayerNorm / one-hot, torch semantics
+pub mod power; // Yeo-Johnson power stage (sklearn PowerTransformer)
 pub mod quantile; // regressor read-out: raw quantiles -> bands
 pub mod readout; // density read-out contract: NLL, threshold, AUROC
-pub mod regressor; // the sklearn-wrapper mirror, pinned to one member
+pub mod regressor; // the sklearn-wrapper mirror + the norm pipelines
 pub mod rope;
 pub mod row; // row transformer, non-interleaved RoPE, CLS
 pub mod ssmax; // QASSMax query scaling — log(train_size) at runtime

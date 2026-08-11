@@ -120,10 +120,30 @@ fixtures; tests that need converted weights skip with a message when
    Verdict: the pinned single member carries every calibration and
    ranking read (bands, density), and point reads on dense support.
    Point reads on sparse support are the one demonstrated case where
-   multi-member ensembling earns its cost — a decision to make when a
-   feature quotes point values from sparse grids, not implemented
-   preemptively. The harness (local sibling `tfmeval`) stays behind as
-   the evidence archive.
+   multi-member ensembling earns its cost. The harness (local sibling
+   `tfmeval`) stays behind as the evidence archive.
+
+   *The ensemble (the sparse-support point read).* Ruled in
+   (2026-08-11): most real metrics stand on few inputs, so sparse
+   support is the normal what-if regime. The regressor ensemble is
+   ported: the Yeo-Johnson power stage (`power.rs` — lambda MLE via
+   the bounded-Brent `fminbound` port, matching sklearn's
+   `PowerTransformer(standardize=True)` at 1e-6 on six fixture
+   matrices, `tests/power.rs`), the "power" pipeline slot between
+   scaling and the outlier stage, per-member feature permutations,
+   and quantile averaging across members (`ensemble.rs`). Graded
+   against a full-default sklearn rerun of all 21 E4 fits — which
+   itself sits on the recorded tfmeval figures to four decimals, so
+   the fixture *is* the recorded configuration (4 members on the
+   2-feature fits, 6 on the 3-feature; the "8" default truncates at
+   shuffles x norms) — member configs injected exactly, final bands
+   matching at 2.1e-4 max relative (`tests/e4_ensemble.rs`).
+   Production member generation uses this crate's own RNG (latin
+   squares crossed with both norms, `EnsembleMember::generate`);
+   which permutation a member draws deliberately differs from
+   sklearn's Python-`random` selection — the diversity, not the
+   identity, is what the ensemble buys. The classifier-side ensemble
+   (class shuffles) stays out until a categorical read needs it.
 
 ## Status
 
