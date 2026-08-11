@@ -26,13 +26,12 @@ weights/        local only, gitignored (see weights policy)
 
 ## Environments
 
-The Python side needs torch + tabicl. Either materialize this repo's
-own env (`uv sync`) or, while the sibling harness is around, run
-through it:
+The Python side needs torch + tabicl; the repo carries its own env:
 
 ```bash
-uv run --project ../tfmeval python scripts/convert_weights.py
-uv run --project ../tfmeval python scripts/gen_fixtures.py
+uv sync
+uv run python scripts/convert_weights.py
+uv run python scripts/gen_fixtures.py
 ```
 
 The Rust side never imports Python. `cargo test` uses the committed
@@ -56,8 +55,11 @@ fixtures; tests that need converted weights skip with a message when
    at multiple (T, H, train_size), ~1e-4 fp32, CPU and Metal.
 2. Wrapper parity: preprocessing + ensembling pinned to one member,
    Rust wrapper matches the sklearn wrapper's outputs.
-3. Statistical parity: the tfmeval read-outs (regressor quantile bands,
-   density ranking) reproduce the harness numbers on the oracle corpora.
+3. Statistical parity: the read-outs (regressor quantile bands, density
+   ranking) reproduce the evaluation-harness numbers on the oracle
+   corpora. The read-out code moves into this repo at that stage; the
+   harness (local sibling `tfmeval`) stays behind as the evidence
+   archive.
 
 ## Status
 

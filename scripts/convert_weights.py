@@ -3,8 +3,7 @@ pinning sha256 digests into fixtures/DIGESTS (committed — the Rust
 loader verifies against them). Conversion is mechanical: every tensor
 is plain float32, no shared storage (verified 2026-08-11).
 
-Run via this repo's env or the sibling harness env:
-    uv run --project ../tfmeval python scripts/convert_weights.py
+    uv run python scripts/convert_weights.py
 """
 
 import glob

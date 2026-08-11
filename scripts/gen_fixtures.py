@@ -4,7 +4,7 @@ Python present. Stage 1 of the fidelity gate — the shapes deliberately
 vary train_size, the axis the ONNX evaluation showed a traced graph
 gets silently wrong.
 
-    uv run --project ../tfmeval python scripts/gen_fixtures.py
+    uv run python scripts/gen_fixtures.py
 """
 
 import glob
