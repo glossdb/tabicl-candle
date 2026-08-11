@@ -9,6 +9,8 @@
 //! ~1e-4 fp32. Weights load from `weights/*.safetensors`, verified
 //! against `fixtures/DIGESTS`.
 
+pub use candle_core::Device; // consumers pick a device without a candle dep
+
 pub mod attention; // MHA + the pre-norm block; K/V slicing, no masks
 pub mod classifier; // the classifier wrapper, pinned to one member
 pub mod config;
