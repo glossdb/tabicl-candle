@@ -17,6 +17,7 @@ pub mod icl; // ICL transformer, train-prefix attention
 pub mod isab; // induced self-attention blocks
 pub mod nn; // Linear / LayerNorm / one-hot, torch semantics
 pub mod quantile; // regressor read-out: raw quantiles -> bands
+pub mod readout; // density read-out contract: NLL, threshold, AUROC
 pub mod regressor; // the sklearn-wrapper mirror, pinned to one member
 pub mod rope;
 pub mod row; // row transformer, non-interleaved RoPE, CLS

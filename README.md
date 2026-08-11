@@ -61,13 +61,14 @@ fixtures; tests that need converted weights skip with a message when
    epsilon, regressor predictions ~3e-5 and classifier probabilities
    ~2e-6 against the 5e-4 gate, predicted labels exactly equal.
    Multi-member ensembling is still open.
-3. **Bands half passed.** Statistical parity: the read-outs reproduce
-   the evaluation-harness numbers on the oracle corpora. The E2.1
-   walk-forward band calibration (374 fits over 44 metric series, four
-   clean corpora) reproduces from the Rust side: the pinned member
-   matches the recorded 8-member ensemble within one standard error on
-   every figure, and the Rust wrapper matches the pinned sklearn oracle
-   exactly (zero coverage flips):
+3. **Passed.** Statistical parity: the read-outs reproduce the
+   evaluation-harness numbers on the oracle corpora.
+
+   *Bands.* The E2.1 walk-forward band calibration (374 fits over 44
+   metric series, four clean corpora) reproduces from the Rust side:
+   the pinned member matches the recorded 8-member ensemble within one
+   standard error on every figure, and the Rust wrapper matches the
+   pinned sklearn oracle exactly (zero coverage flips):
 
    | grain | figure | recorded (8-member) | pinned sklearn | Rust |
    |---|---|---|---|---|
@@ -78,9 +79,31 @@ fixtures; tests that need converted weights skip with a message when
    | segment | coverage90 | 0.618 | 0.637 | 0.637 |
    | segment | median width80 | 0.189 | 0.187 | 0.187 |
 
-   Verdict: multi-member ensembling is not needed for band calibration.
-   The density-ranking half (E1.2s3, joined-surface AUROC) waits on the
-   classifier wrapper — its surface includes categorical conditionals.
+   *Density.* The E1.2s3 joined-surface anomaly ranking (referential
+   integrity broken three ways; 14,928 rows, mixed
+   numerical/categorical, the strongest TabICL result in the
+   evaluation) reproduces with pinned single-member inner estimators —
+   the recorded runs used 4-member inner ensembles (latin shuffles,
+   none+power norms, AMP):
+
+   | variant | figure | recorded (4-member) | pinned (1-member) |
+   |---|---|---|---|
+   | shuffled | row AUROC | 0.9338 | 0.9343 |
+   | shuffled | batch score | 0.1449 | 0.1488 |
+   | distinct | row AUROC | 0.991 | 0.9932 |
+   | distinct | batch score | 0.1125 | 0.1159 |
+   | repeated | row AUROC | 0.991 | 0.9932 |
+   | repeated | batch score | 0.1125 | 0.1159 |
+
+   The Rust side is graded on a reduced instance of the shuffled
+   surface (400-row sampled context, 200-row frames — the full
+   protocol's 15k-row fits are a torch-on-MPS job, not a standing CPU
+   test): recorded permutations and noise, per-permutation parity, and
+   the read-out contract end to end, AUROC agreeing with the pinned
+   oracle to 8e-4 (`tests/e12s3.rs`).
+
+   Verdict: multi-member ensembling is not needed — the pinned single
+   member carries both the band calibration and the density ranking.
    The harness (local sibling `tfmeval`) stays behind as the evidence
    archive.
 
@@ -135,17 +158,32 @@ the extrapolating band fits exposed it at ~0.8 in scaled space.
 `QuantileDist` now materializes a zero-offset copy before sorting,
 and the suite pins that guarantee with a regression test.
 
-The density read (`unsupervised.rs`) is ported for numerical columns:
-chain-rule orchestration over the wrapper, graded per permutation
-against the oracle's own `_compute_log_density` at ~3e-3 in log space
-(the gate is set by the read's conditioning — log_prob differentiates
+The density read (`unsupervised.rs`) is ported for mixed surfaces:
+chain-rule orchestration over both wrappers — the quantile
+distribution's log_prob for numerical conditionals, the classifier's
+`predict_proba` lookup for categorical ones (sorted classes, 1e-10
+floor for unseen classes, 0.0 for missing observations). Graded per
+permutation against the oracle's own `_compute_log_density`: the
+numerical-only fixture at ~3e-3 in log space, the mixed fixture at
+~5e-3 (gates set by the read's conditioning — log_prob differentiates
 the quantile grid, amplifying the forward's ~2e-5 — not by porting
-slack), with the score *ranking* asserted to match exactly.
-Permutations and the empty-conditioning noise column are API inputs:
-the sklearn source draws them from Python's Mersenne Twister and
-numpy's Generator, and nothing semantic rides on those streams —
-grading replays the recorded oracle streams. Still open: wiring the
-categorical conditional (the classifier wrapper's `predict_proba`,
-now ported) into the density read, and multi-member ensembling if the
-stage-3 density numbers need it (the E1.2s3 protocol runs a 4-member
-inner ensemble).
+slack), with the score ordering asserted pairwise: oracle pairs
+separated by more than the numeric gate never flip. Permutations and
+the empty-conditioning noise column are API inputs: the sklearn source
+draws them from Python's Mersenne Twister and numpy's Generator, and
+nothing semantic rides on those streams — grading replays the recorded
+oracle streams.
+
+One finding from the real-surface grading (the E1.2s3 fixture): on
+near-deterministic conditionals — amount given amount_inv, where the
+conditional distribution is a spike — the row-level log density is
+chaotic in any fp32 implementation. The spike's quantile gaps sit at
+~1e-4, the same order as legitimate fp32 forward jitter (torch's own
+fp32 forward is 1.6e-4 from its fp64 reference there; this port is
+1.3e-4 from the same reference), so per-row NLL moves by ~0.3 log
+units between equally valid implementations while the rank-based
+reads stay put (AUROC shifted 8e-4). Downstream consumers should
+treat row NLL on such columns as ordinal, not cardinal. The read-out
+contract itself (`readout.rs`: NLL, the q95 reference threshold,
+batch score, tie-averaged AUROC) is ported from the harness and
+graded in `tests/e12s3.rs`.
