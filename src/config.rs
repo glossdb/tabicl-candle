@@ -22,4 +22,14 @@ impl TabIclConfig {
     pub fn int(&self, key: &str) -> Option<i64> {
         self.raw.get(key).and_then(|v| v.as_i64())
     }
+
+    pub fn bool(&self, key: &str) -> Option<bool> {
+        self.raw.get(key).and_then(|v| v.as_bool())
+    }
+
+    pub fn str(&self, key: &str) -> Option<String> {
+        self.raw
+            .get(key)
+            .and_then(|v| v.as_str().map(str::to_owned))
+    }
 }

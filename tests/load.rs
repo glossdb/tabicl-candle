@@ -33,8 +33,7 @@ fn weights_load_and_verify() {
         return;
     }
     for which in ["regressor", "classifier"] {
-        let ckpt =
-            tabicl_candle::weights::load(root(), which, &candle_core::Device::Cpu).unwrap();
+        let ckpt = tabicl_candle::weights::load(root(), which, &candle_core::Device::Cpu).unwrap();
         assert!(
             ckpt.tensors.len() > 100,
             "{which}: expected a full state dict, got {}",

@@ -51,8 +51,10 @@ fixtures; tests that need converted weights skip with a message when
 
 ## Fidelity gate (in order, each blocks the next)
 
-1. Golden fixtures: Rust forward matches the torch train-mode forward
-   at multiple (T, H, train_size), ~1e-4 fp32, CPU and Metal.
+1. **Passed.** Golden fixtures: the Rust forward matches the torch
+   train-mode forward on every fixture, both checkpoints, CPU and
+   Metal (`cargo test --features metal`), max |diff| ~2e-5 fp32
+   against the 1e-4 gate.
 2. Wrapper parity: preprocessing + ensembling pinned to one member,
    Rust wrapper matches the sklearn wrapper's outputs.
 3. Statistical parity: the read-outs (regressor quantile bands, density
@@ -63,6 +65,11 @@ fixtures; tests that need converted weights skip with a message when
 
 ## Status
 
-Skeleton. Conversion and fixtures work; the port itself is not started.
-Read-out priority from the evaluation: regressor (what-if bands) and
-the unsupervised density (join-suspect ranking) first, classifier after.
+The full train-mode forward is ported and passes fidelity stage 1 for
+both checkpoints: column SetTransformer (ISAB, QASSMax), row
+transformer (non-interleaved RoPE, CLS tokens), ICL transformer
+(train-prefix attention), heads. The checkpoints differ in one config
+bit — the regressor's LayerNorms are bias-free, the classifier's are
+not — the loader follows the tensors. Next, in read-out priority from
+the evaluation: the quantile head (what-if bands), the unsupervised
+density read (join-suspect ranking), then wrapper parity (stage 2).
