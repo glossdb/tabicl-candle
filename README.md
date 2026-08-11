@@ -60,10 +60,27 @@ fixtures; tests that need converted weights skip with a message when
    (n_estimators=1, norm "none") — preprocessing at f64 machine
    epsilon, predictions ~3e-5 against the 5e-4 gate. Multi-member
    ensembling is still open.
-3. Statistical parity: the read-outs (regressor quantile bands, density
-   ranking) reproduce the evaluation-harness numbers on the oracle
-   corpora. The read-out code moves into this repo at that stage; the
-   harness (local sibling `tfmeval`) stays behind as the evidence
+3. **Bands half passed.** Statistical parity: the read-outs reproduce
+   the evaluation-harness numbers on the oracle corpora. The E2.1
+   walk-forward band calibration (374 fits over 44 metric series, four
+   clean corpora) reproduces from the Rust side: the pinned member
+   matches the recorded 8-member ensemble within one standard error on
+   every figure, and the Rust wrapper matches the pinned sklearn oracle
+   exactly (zero coverage flips):
+
+   | grain | figure | recorded (8-member) | pinned sklearn | Rust |
+   |---|---|---|---|---|
+   | month (n=272) | coverage80 | 0.445 | 0.474 | 0.474 |
+   | month | coverage90 | 0.563 | 0.544 | 0.544 |
+   | month | median width80 | 0.139 | 0.141 | 0.141 |
+   | segment (n=102) | coverage80 | 0.559 | 0.559 | 0.559 |
+   | segment | coverage90 | 0.618 | 0.637 | 0.637 |
+   | segment | median width80 | 0.189 | 0.187 | 0.187 |
+
+   Verdict: multi-member ensembling is not needed for band calibration.
+   The density-ranking half (E1.2s3, joined-surface AUROC) waits on the
+   classifier wrapper — its surface includes categorical conditionals.
+   The harness (local sibling `tfmeval`) stays behind as the evidence
    archive.
 
 ## Status
@@ -94,6 +111,17 @@ seeing the f32 cast. The sklearn inference path was verified against
 source to be numerically the train-mode forward for regression (the
 InferenceManager only chunks batch dims), which is why the ported
 forward slots in directly.
+
+Stage 3 surfaced a real bug the earlier stages could not see: candle
+0.9's CPU argsort ignores a view's start offset (candle-core
+`sort.rs`, `asort` — the permutation comes from the wrong storage
+window while gather reads the right one; Metal applies the offset
+correctly). The narrow'd forward output is exactly such a view, and
+`.contiguous()` is a no-op on it. On in-distribution data the damage
+hid below the fp gates because quantile outputs are nearly sorted;
+the extrapolating band fits exposed it at ~0.8 in scaled space.
+`QuantileDist` now materializes a zero-offset copy before sorting,
+and the suite pins that guarantee with a regression test.
 
 The density read (`unsupervised.rs`) is ported for numerical columns:
 chain-rule orchestration over the wrapper, graded per permutation

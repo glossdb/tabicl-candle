@@ -1,0 +1,222 @@
+[
+ {
+  "metric": "revenue",
+  "seed": 42,
+  "months": 12
+ },
+ {
+  "metric": "gross_profit",
+  "seed": 42,
+  "months": 12
+ },
+ {
+  "metric": "expenses",
+  "seed": 42,
+  "months": 12
+ },
+ {
+  "metric": "operating_income",
+  "seed": 42,
+  "months": 12
+ },
+ {
+  "metric": "cash_balance",
+  "seed": 42,
+  "months": 12
+ },
+ {
+  "metric": "ar_balance",
+  "seed": 42,
+  "months": 12
+ },
+ {
+  "metric": "dso",
+  "seed": 42,
+  "months": 12
+ },
+ {
+  "metric": "free_cash_flow",
+  "seed": 42,
+  "months": 12
+ },
+ {
+  "metric": "revenue@Enterprise",
+  "seed": 42,
+  "months": 12
+ },
+ {
+  "metric": "revenue@Mid-Market",
+  "seed": 42,
+  "months": 12
+ },
+ {
+  "metric": "revenue@SMB",
+  "seed": 42,
+  "months": 12
+ },
+ {
+  "metric": "revenue",
+  "seed": 43,
+  "months": 12
+ },
+ {
+  "metric": "gross_profit",
+  "seed": 43,
+  "months": 12
+ },
+ {
+  "metric": "expenses",
+  "seed": 43,
+  "months": 12
+ },
+ {
+  "metric": "operating_income",
+  "seed": 43,
+  "months": 12
+ },
+ {
+  "metric": "cash_balance",
+  "seed": 43,
+  "months": 12
+ },
+ {
+  "metric": "ar_balance",
+  "seed": 43,
+  "months": 12
+ },
+ {
+  "metric": "dso",
+  "seed": 43,
+  "months": 12
+ },
+ {
+  "metric": "free_cash_flow",
+  "seed": 43,
+  "months": 12
+ },
+ {
+  "metric": "revenue@Enterprise",
+  "seed": 43,
+  "months": 12
+ },
+ {
+  "metric": "revenue@Mid-Market",
+  "seed": 43,
+  "months": 12
+ },
+ {
+  "metric": "revenue@SMB",
+  "seed": 43,
+  "months": 12
+ },
+ {
+  "metric": "revenue",
+  "seed": 44,
+  "months": 12
+ },
+ {
+  "metric": "gross_profit",
+  "seed": 44,
+  "months": 12
+ },
+ {
+  "metric": "expenses",
+  "seed": 44,
+  "months": 12
+ },
+ {
+  "metric": "operating_income",
+  "seed": 44,
+  "months": 12
+ },
+ {
+  "metric": "cash_balance",
+  "seed": 44,
+  "months": 12
+ },
+ {
+  "metric": "ar_balance",
+  "seed": 44,
+  "months": 12
+ },
+ {
+  "metric": "dso",
+  "seed": 44,
+  "months": 12
+ },
+ {
+  "metric": "free_cash_flow",
+  "seed": 44,
+  "months": 12
+ },
+ {
+  "metric": "revenue@Enterprise",
+  "seed": 44,
+  "months": 12
+ },
+ {
+  "metric": "revenue@Mid-Market",
+  "seed": 44,
+  "months": 12
+ },
+ {
+  "metric": "revenue@SMB",
+  "seed": 44,
+  "months": 12
+ },
+ {
+  "metric": "revenue",
+  "seed": 42,
+  "months": 24
+ },
+ {
+  "metric": "gross_profit",
+  "seed": 42,
+  "months": 24
+ },
+ {
+  "metric": "expenses",
+  "seed": 42,
+  "months": 24
+ },
+ {
+  "metric": "operating_income",
+  "seed": 42,
+  "months": 24
+ },
+ {
+  "metric": "cash_balance",
+  "seed": 42,
+  "months": 24
+ },
+ {
+  "metric": "ar_balance",
+  "seed": 42,
+  "months": 24
+ },
+ {
+  "metric": "dso",
+  "seed": 42,
+  "months": 24
+ },
+ {
+  "metric": "free_cash_flow",
+  "seed": 42,
+  "months": 24
+ },
+ {
+  "metric": "revenue@Enterprise",
+  "seed": 42,
+  "months": 24
+ },
+ {
+  "metric": "revenue@Mid-Market",
+  "seed": 42,
+  "months": 24
+ },
+ {
+  "metric": "revenue@SMB",
+  "seed": 42,
+  "months": 24
+ }
+]
