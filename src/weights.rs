@@ -13,20 +13,40 @@ pub struct Checkpoint {
     pub config: crate::config::TabIclConfig,
 }
 
-/// `which` is "classifier" or "regressor".
+/// `which` is "classifier" or "regressor". `root` is this repo's
+/// layout: weights under `weights/`, digests at `fixtures/DIGESTS`.
 pub fn load(root: &Path, which: &str, device: &Device) -> anyhow::Result<Checkpoint> {
-    let st = root.join(format!("weights/tabicl-{which}.safetensors"));
-    verify_digest(root, which, &st)?;
+    load_from(
+        &root.join("weights"),
+        &root.join("fixtures/DIGESTS"),
+        which,
+        device,
+    )
+}
+
+/// Deployment layout: one flat directory holding the safetensors, the
+/// config json, and a `DIGESTS` file — what a consuming server ships
+/// (and a container bakes) without carrying this repo's shape.
+pub fn load_dir(dir: &Path, which: &str, device: &Device) -> anyhow::Result<Checkpoint> {
+    load_from(dir, &dir.join("DIGESTS"), which, device)
+}
+
+fn load_from(
+    dir: &Path,
+    digests: &Path,
+    which: &str,
+    device: &Device,
+) -> anyhow::Result<Checkpoint> {
+    let st = dir.join(format!("tabicl-{which}.safetensors"));
+    verify_digest(digests, which, &st)?;
     let tensors = candle_core::safetensors::load(&st, device)?;
-    let config = crate::config::TabIclConfig::load(
-        &root.join(format!("weights/tabicl-{which}.config.json")),
-    )?;
+    let config =
+        crate::config::TabIclConfig::load(&dir.join(format!("tabicl-{which}.config.json")))?;
     Ok(Checkpoint { tensors, config })
 }
 
-fn verify_digest(root: &Path, which: &str, st: &PathBuf) -> anyhow::Result<()> {
-    let digests: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(root.join("fixtures/DIGESTS"))?)?;
+fn verify_digest(digests: &Path, which: &str, st: &PathBuf) -> anyhow::Result<()> {
+    let digests: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(digests)?)?;
     let expected = digests[which]["sha256"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("no pinned digest for {which}"))?;
