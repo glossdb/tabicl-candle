@@ -55,8 +55,11 @@ fixtures; tests that need converted weights skip with a message when
    train-mode forward on every fixture, both checkpoints, CPU and
    Metal (`cargo test --features metal`), max |diff| ~2e-5 fp32
    against the 1e-4 gate.
-2. Wrapper parity: preprocessing + ensembling pinned to one member,
-   Rust wrapper matches the sklearn wrapper's outputs.
+2. **Passed (pinned member).** Wrapper parity: the Rust regressor
+   wrapper matches the sklearn wrapper end to end for one member
+   (n_estimators=1, norm "none") — preprocessing at f64 machine
+   epsilon, predictions ~3e-5 against the 5e-4 gate. Multi-member
+   ensembling is still open.
 3. Statistical parity: the read-outs (regressor quantile bands, density
    ranking) reproduce the evaluation-harness numbers on the oracle
    corpora. The read-out code moves into this repo at that stage; the
@@ -81,5 +84,14 @@ density (`TabICLUnsupervised.score_samples`) is not a separate model —
 it is chain-rule orchestration over the sklearn wrappers (per
 conditional: `fit` + `predict(raw_quantiles)` + `log_prob`, or
 `predict_proba` for categorical columns). So the density read comes
-*after* wrapper parity, not beside it. Next: stage 2 — the
-preprocessing + ensembling wrapper, pinned to one member first.
+*after* wrapper parity, not beside it.
+
+The wrapper (`regressor.rs`) is ported for the pinned member: mean
+imputation, the unique-value filter, standard scaling with clipping,
+the two-stage outlier soft clip, and y standardization — fit
+statistics host-side in f64 exactly as numpy computes them, the model
+seeing the f32 cast. The sklearn inference path was verified against
+source to be numerically the train-mode forward for regression (the
+InferenceManager only chunks batch dims), which is why the ported
+forward slots in directly. Next: the density orchestration over this
+wrapper, then multi-member ensembling if the read-outs need it.
