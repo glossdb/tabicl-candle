@@ -102,10 +102,28 @@ fixtures; tests that need converted weights skip with a message when
    the read-out contract end to end, AUROC agreeing with the pinned
    oracle to 8e-4 (`tests/e12s3.rs`).
 
-   Verdict: multi-member ensembling is not needed — the pinned single
-   member carries both the band calibration and the density ranking.
-   The harness (local sibling `tfmeval`) stays behind as the evidence
-   archive.
+   *What-if (the point read).* The E4 counterfactual walk (fine grid,
+   coarse grid, two-lever interaction; 21 fits against exact generated
+   truth) reproduces from the Rust side at 5.7e-5 max relative against
+   the pinned oracle, harness grades matching on every fit
+   (`tests/e4.rs`). The pinned-vs-recorded comparison splits the
+   ensemble verdict for the first time: on the dense grid (7 factors,
+   42 train rows) the pinned member matches the recorded 8-member run
+   within thousandths of median APE, but on the sparse grid (3
+   factors, 18 rows) the ensemble buys 2-3x lower point error
+   (revenue mape 0.0092 recorded vs 0.0294 pinned; gross_profit
+   0.0681 vs 0.1305) and consistently better effect recovery. The
+   interaction fits match the recorded figures — and both lose to
+   additive composition where the true interaction is small, as the
+   recorded run already found.
+
+   Verdict: the pinned single member carries every calibration and
+   ranking read (bands, density), and point reads on dense support.
+   Point reads on sparse support are the one demonstrated case where
+   multi-member ensembling earns its cost — a decision to make when a
+   feature quotes point values from sparse grids, not implemented
+   preemptively. The harness (local sibling `tfmeval`) stays behind as
+   the evidence archive.
 
 ## Status
 
