@@ -103,19 +103,101 @@ impl<'a> Unsupervised<'a> {
         let mut log_p = vec![0f64; test_rows];
 
         for (i, &col) in perm.iter().enumerate() {
-            let train_rows: Vec<usize> = (0..self.rows)
-                .filter(|&r| !self.x[r * self.cols + col].is_nan())
-                .collect();
-            if train_rows.len() < MIN_SAMPLES_PER_CONDITIONAL {
+            let train_len = self.usable_train_rows(col);
+            if train_len < MIN_SAMPLES_PER_CONDITIONAL {
                 continue;
             }
+            let dummy = (i == 0).then(|| (noise(train_len), noise(test_rows)));
+            let lp = self.conditional(x_test, test_rows, &perm[..i], col, dummy, device)?;
+            for (a, v) in log_p.iter_mut().zip(lp) {
+                *a += v;
+            }
+        }
+        Ok(log_p)
+    }
 
-            let cond = &perm[..i];
-            let (x_tr, x_te, n_cond): (Vec<f64>, Vec<f64>, usize) = if cond.is_empty() {
-                let tr = noise(train_rows.len()).iter().map(|v| *v as f64).collect();
-                let te = noise(test_rows).iter().map(|v| *v as f64).collect();
-                (tr, te, 1)
-            } else {
+    /// Mean per-row log density across permutations — the log-space read
+    /// the misfit door consumes (`score_samples` keeps the oracle's exp).
+    /// The feature conditionals are independent, so on CPU they run in
+    /// parallel on the caller's rayon pool; an accelerator keeps its one
+    /// queue and runs them in order. The dummy-noise streams are drawn
+    /// up front in the sequential order, so the result is identical to
+    /// summing `log_density` per permutation.
+    pub fn score_log_mean(
+        &self,
+        x_test: &[f32],
+        test_rows: usize,
+        permutations: &[Vec<usize>],
+        noise: &mut dyn FnMut(usize) -> Vec<f32>,
+        device: &Device,
+    ) -> anyhow::Result<Vec<f64>> {
+        assert_eq!(x_test.len(), test_rows * self.cols);
+        type Task = (usize, usize, Option<(Vec<f32>, Vec<f32>)>);
+        let mut tasks: Vec<Task> = Vec::new();
+        for (p, perm) in permutations.iter().enumerate() {
+            for (i, &col) in perm.iter().enumerate() {
+                let train_len = self.usable_train_rows(col);
+                if train_len < MIN_SAMPLES_PER_CONDITIONAL {
+                    continue;
+                }
+                let dummy = (i == 0).then(|| (noise(train_len), noise(test_rows)));
+                tasks.push((p, i, dummy));
+            }
+        }
+        let run = |(p, i, dummy): Task| -> anyhow::Result<Vec<f64>> {
+            let perm = &permutations[p];
+            self.conditional(x_test, test_rows, &perm[..i], perm[i], dummy, device)
+        };
+        let partials: Vec<Vec<f64>> = if matches!(device, Device::Cpu) {
+            use rayon::prelude::*;
+            tasks
+                .into_par_iter()
+                .map(run)
+                .collect::<anyhow::Result<_>>()?
+        } else {
+            tasks.into_iter().map(run).collect::<anyhow::Result<_>>()?
+        };
+        let mut acc = vec![0f64; test_rows];
+        for lp in partials {
+            for (a, v) in acc.iter_mut().zip(lp) {
+                *a += v;
+            }
+        }
+        let k = permutations.len() as f64;
+        Ok(acc.into_iter().map(|s| s / k).collect())
+    }
+
+    fn usable_train_rows(&self, col: usize) -> usize {
+        (0..self.rows)
+            .filter(|&r| !self.x[r * self.cols + col].is_nan())
+            .count()
+    }
+
+    /// One feature's conditional log densities, (test_rows,): the body
+    /// the permutation walks share. `dummy` carries the pre-drawn
+    /// standard-normal (train, test) columns for an empty conditioning.
+    fn conditional(
+        &self,
+        x_test: &[f32],
+        test_rows: usize,
+        cond: &[usize],
+        col: usize,
+        dummy: Option<(Vec<f32>, Vec<f32>)>,
+        device: &Device,
+    ) -> anyhow::Result<Vec<f64>> {
+        let train_rows: Vec<usize> = (0..self.rows)
+            .filter(|&r| !self.x[r * self.cols + col].is_nan())
+            .collect();
+        let (x_tr, x_te, n_cond): (Vec<f64>, Vec<f64>, usize) = match dummy {
+            Some((tr, te)) => {
+                debug_assert!(cond.is_empty());
+                (
+                    tr.iter().map(|v| *v as f64).collect(),
+                    te.iter().map(|v| *v as f64).collect(),
+                    1,
+                )
+            }
+            None => {
                 let tr = train_rows
                     .iter()
                     .flat_map(|&r| cond.iter().map(move |&c| self.x[r * self.cols + c] as f64))
@@ -124,38 +206,39 @@ impl<'a> Unsupervised<'a> {
                     .flat_map(|r| cond.iter().map(move |&c| x_test[r * self.cols + c] as f64))
                     .collect();
                 (tr, te, cond.len())
-            };
-            let y: Vec<f64> = train_rows
-                .iter()
-                .map(|&r| self.x[r * self.cols + col] as f64)
-                .collect();
-            let observed: Vec<f32> = (0..test_rows)
-                .map(|r| x_test[r * self.cols + col])
-                .collect();
-
-            if self.categorical.contains(&col) {
-                self.categorical_conditional(
-                    &x_tr,
-                    &x_te,
-                    n_cond,
-                    &train_rows,
-                    &y,
-                    &observed,
-                    &mut log_p,
-                    device,
-                )?;
-            } else {
-                self.numerical_conditional(
-                    &x_tr,
-                    &x_te,
-                    n_cond,
-                    &train_rows,
-                    &y,
-                    &observed,
-                    &mut log_p,
-                    device,
-                )?;
             }
+        };
+        let y: Vec<f64> = train_rows
+            .iter()
+            .map(|&r| self.x[r * self.cols + col] as f64)
+            .collect();
+        let observed: Vec<f32> = (0..test_rows)
+            .map(|r| x_test[r * self.cols + col])
+            .collect();
+
+        let mut log_p = vec![0f64; test_rows];
+        if self.categorical.contains(&col) {
+            self.categorical_conditional(
+                &x_tr,
+                &x_te,
+                n_cond,
+                &train_rows,
+                &y,
+                &observed,
+                &mut log_p,
+                device,
+            )?;
+        } else {
+            self.numerical_conditional(
+                &x_tr,
+                &x_te,
+                n_cond,
+                &train_rows,
+                &y,
+                &observed,
+                &mut log_p,
+                device,
+            )?;
         }
         Ok(log_p)
     }
