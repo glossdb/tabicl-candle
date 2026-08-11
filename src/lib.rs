@@ -15,11 +15,9 @@ pub mod embedding; // feature grouping, SkippableLinear, y-encoders
 pub mod icl; // ICL transformer, train-prefix attention
 pub mod isab; // induced self-attention blocks
 pub mod nn; // Linear / LayerNorm / one-hot, torch semantics
+pub mod quantile; // regressor read-out: raw quantiles -> bands
 pub mod rope;
 pub mod row; // row transformer, non-interleaved RoPE, CLS
 pub mod ssmax; // QASSMax query scaling — log(train_size) at runtime
 pub mod tabicl; // the composed forward
 pub mod weights;
-
-// Still to land (fidelity stages 2–3):
-// pub mod quantile;    // regressor head: 999 raw quantiles -> bands
