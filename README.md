@@ -55,11 +55,12 @@ fixtures; tests that need converted weights skip with a message when
    train-mode forward on every fixture, both checkpoints, CPU and
    Metal (`cargo test --features metal`), max |diff| ~2e-5 fp32
    against the 1e-4 gate.
-2. **Passed (pinned member).** Wrapper parity: the Rust regressor
-   wrapper matches the sklearn wrapper end to end for one member
-   (n_estimators=1, norm "none") — preprocessing at f64 machine
-   epsilon, predictions ~3e-5 against the 5e-4 gate. Multi-member
-   ensembling is still open.
+2. **Passed (pinned member).** Wrapper parity: the Rust regressor and
+   classifier wrappers match the sklearn wrappers end to end for one
+   member (n_estimators=1, norm "none") — preprocessing at f64 machine
+   epsilon, regressor predictions ~3e-5 and classifier probabilities
+   ~2e-6 against the 5e-4 gate, predicted labels exactly equal.
+   Multi-member ensembling is still open.
 3. **Bands half passed.** Statistical parity: the read-outs reproduce
    the evaluation-harness numbers on the oracle corpora. The E2.1
    walk-forward band calibration (374 fits over 44 metric series, four
@@ -112,6 +113,17 @@ source to be numerically the train-mode forward for regression (the
 InferenceManager only chunks batch dims), which is why the ported
 forward slots in directly.
 
+The classifier wrapper (`classifier.rs`) shares that preprocessing
+plane unchanged (the sklearn `PreprocessingPipeline` is constructed
+identically for both tasks) and adds the classification delta: label
+encoding (sorted unique classes), the logit slice to the classes
+present, and the wrapper's temperature softmax with its final
+renormalization, computed host-side in f32 as numpy computes it. With
+one member the class shuffle short-circuits to identity exactly like
+the feature shuffle, so the ensemble-average and shuffle-correction
+steps vanish — the same shape the density read's inner classifiers
+have.
+
 Stage 3 surfaced a real bug the earlier stages could not see: candle
 0.9's CPU argsort ignores a view's start offset (candle-core
 `sort.rs`, `asort` — the permutation comes from the wrong storage
@@ -132,7 +144,8 @@ slack), with the score *ranking* asserted to match exactly.
 Permutations and the empty-conditioning noise column are API inputs:
 the sklearn source draws them from Python's Mersenne Twister and
 numpy's Generator, and nothing semantic rides on those streams —
-grading replays the recorded oracle streams. Still open: the
-categorical conditional (needs the classifier wrapper's
-`predict_proba`), and multi-member ensembling if the stage-3 numbers
-need it.
+grading replays the recorded oracle streams. Still open: wiring the
+categorical conditional (the classifier wrapper's `predict_proba`,
+now ported) into the density read, and multi-member ensembling if the
+stage-3 density numbers need it (the E1.2s3 protocol runs a 4-member
+inner ensemble).

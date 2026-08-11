@@ -10,6 +10,7 @@
 //! against `fixtures/DIGESTS`.
 
 pub mod attention; // MHA + the pre-norm block; K/V slicing, no masks
+pub mod classifier; // the classifier wrapper, pinned to one member
 pub mod config;
 pub mod embedding; // feature grouping, SkippableLinear, y-encoders
 pub mod icl; // ICL transformer, train-prefix attention
