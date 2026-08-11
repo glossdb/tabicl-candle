@@ -117,6 +117,18 @@ fixtures; tests that need converted weights skip with a message when
    additive composition where the true interaction is small, as the
    recorded run already found.
 
+   *Diagnosis (the categorical read).* The E2.2 cause classification
+   (24 cause-labeled episodes — artifact / mix / rate / none —
+   leave-one-seed-out, FULL vs BLIND feature sets) reproduces: the
+   pinned single-member classifier lands the recorded ensemble
+   accuracies exactly (full 18/24 = 0.750, blind 13/24 = 0.542, with
+   23/24 individual call agreement per set), and the Rust classifier
+   wrapper matches the pinned oracle at ~7e-6 max probability
+   difference with every accuracy figure equal
+   (`scripts/gen_e22_fixture.py`, `tests/e22.rs`). The FULL−BLIND gap
+   — the value of the glossary-supplied invariant — survives the
+   port untouched.
+
    Verdict: the pinned single member carries every calibration and
    ranking read (bands, density), and point reads on dense support.
    Point reads on sparse support are the one demonstrated case where
