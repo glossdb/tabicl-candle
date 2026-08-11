@@ -70,6 +70,16 @@ both checkpoints: column SetTransformer (ISAB, QASSMax), row
 transformer (non-interleaved RoPE, CLS tokens), ICL transformer
 (train-prefix attention), heads. The checkpoints differ in one config
 bit — the regressor's LayerNorms are bias-free, the classifier's are
-not — the loader follows the tensors. Next, in read-out priority from
-the evaluation: the quantile head (what-if bands), the unsupervised
-density read (join-suspect ranking), then wrapper parity (stage 2).
+not — the loader follows the tensors.
+
+The quantile read-out (`quantile.rs`) is ported and graded against the
+model's own `QuantileToDistribution`: monotone quantiles bit-identical,
+bands (`icdf`) at ~6e-8, `mean` at ~1e-7, `log_prob` at ~6e-5.
+
+One ordering discovery from reading the source: the unsupervised
+density (`TabICLUnsupervised.score_samples`) is not a separate model —
+it is chain-rule orchestration over the sklearn wrappers (per
+conditional: `fit` + `predict(raw_quantiles)` + `log_prob`, or
+`predict_proba` for categorical columns). So the density read comes
+*after* wrapper parity, not beside it. Next: stage 2 — the
+preprocessing + ensembling wrapper, pinned to one member first.
