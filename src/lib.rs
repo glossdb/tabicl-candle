@@ -21,4 +21,5 @@ pub mod rope;
 pub mod row; // row transformer, non-interleaved RoPE, CLS
 pub mod ssmax; // QASSMax query scaling — log(train_size) at runtime
 pub mod tabicl; // the composed forward
+pub mod unsupervised; // chain-rule density read over the wrapper
 pub mod weights;

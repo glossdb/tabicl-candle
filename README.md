@@ -93,5 +93,18 @@ statistics host-side in f64 exactly as numpy computes them, the model
 seeing the f32 cast. The sklearn inference path was verified against
 source to be numerically the train-mode forward for regression (the
 InferenceManager only chunks batch dims), which is why the ported
-forward slots in directly. Next: the density orchestration over this
-wrapper, then multi-member ensembling if the read-outs need it.
+forward slots in directly.
+
+The density read (`unsupervised.rs`) is ported for numerical columns:
+chain-rule orchestration over the wrapper, graded per permutation
+against the oracle's own `_compute_log_density` at ~3e-3 in log space
+(the gate is set by the read's conditioning — log_prob differentiates
+the quantile grid, amplifying the forward's ~2e-5 — not by porting
+slack), with the score *ranking* asserted to match exactly.
+Permutations and the empty-conditioning noise column are API inputs:
+the sklearn source draws them from Python's Mersenne Twister and
+numpy's Generator, and nothing semantic rides on those streams —
+grading replays the recorded oracle streams. Still open: the
+categorical conditional (needs the classifier wrapper's
+`predict_proba`), and multi-member ensembling if the stage-3 numbers
+need it.
