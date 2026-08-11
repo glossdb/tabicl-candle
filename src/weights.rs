@@ -1,0 +1,51 @@
+//! Weight loading: safetensors under `weights/`, digest-verified
+//! against the committed `fixtures/DIGESTS`. Weights are never in git
+//! and never fetched at container start — a container image bakes them
+//! in at build time (repo README, weights policy).
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use candle_core::{Device, Tensor};
+
+pub struct Checkpoint {
+    pub tensors: HashMap<String, Tensor>,
+    pub config: crate::config::TabIclConfig,
+}
+
+/// `which` is "classifier" or "regressor".
+pub fn load(root: &Path, which: &str, device: &Device) -> anyhow::Result<Checkpoint> {
+    let st = root.join(format!("weights/tabicl-{which}.safetensors"));
+    verify_digest(root, which, &st)?;
+    let tensors = candle_core::safetensors::load(&st, device)?;
+    let config = crate::config::TabIclConfig::load(
+        &root.join(format!("weights/tabicl-{which}.config.json")),
+    )?;
+    Ok(Checkpoint { tensors, config })
+}
+
+fn verify_digest(root: &Path, which: &str, st: &PathBuf) -> anyhow::Result<()> {
+    let digests: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(root.join("fixtures/DIGESTS"))?)?;
+    let expected = digests[which]["sha256"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("no pinned digest for {which}"))?;
+    let bytes = std::fs::read(st)?;
+    let actual = sha256_hex(&bytes);
+    anyhow::ensure!(
+        actual == expected,
+        "weights digest mismatch for {which}: expected {expected}, got {actual} — \
+         re-run scripts/convert_weights.py or restore the pinned weights"
+    );
+    Ok(())
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    // Tiny local SHA-256 to keep the dependency surface flat is not
+    // worth it — candle already pulls enough. This uses the same crate
+    // the dev-dependencies use.
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    hex::encode(h.finalize())
+}
