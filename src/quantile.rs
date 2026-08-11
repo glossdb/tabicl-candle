@@ -26,7 +26,15 @@ impl QuantileDist {
     /// raw: (*batch, n) predicted quantiles, crossings allowed.
     pub fn new(raw: &Tensor) -> anyhow::Result<Self> {
         let n = raw.dim(D::Minus1)?;
-        let (quantiles, _) = raw.contiguous()?.sort_last_dim(true)?;
+        // candle 0.9's CPU argsort reads its input from storage index 0,
+        // ignoring the view's start offset (candle-core sort.rs, asort) —
+        // a narrow'd forward output sorts the wrong storage window while
+        // gather then reads the right one, silently mis-sorting.
+        // `.contiguous()` is a no-op on such views (strides pass the
+        // check), so materialize a zero-offset copy via an elementwise
+        // op before sorting. Metal applies the offset correctly; the
+        // copy is cheap and uniform across devices.
+        let (quantiles, _) = raw.affine(1.0, 0.0)?.sort_last_dim(true)?;
         let grid: Vec<f64> = (1..=n).map(|i| i as f64 / (n + 1) as f64).collect();
         let k = TAIL_QUANTILES.min(n / 4);
 

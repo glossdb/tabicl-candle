@@ -124,3 +124,36 @@ fn quantile_head_matches_torch() {
         );
     }
 }
+
+/// candle 0.9's CPU argsort ignores a view's start offset (the argsort
+/// permutation comes from the wrong storage window; gather then reads
+/// the right one). QuantileDist materializes a zero-offset copy before
+/// sorting — this pins that guarantee for offset views regardless of
+/// how candle evolves.
+#[test]
+fn quantile_dist_is_offset_view_safe() {
+    let dev = Device::Cpu;
+    let data: Vec<f32> = (0..32)
+        .map(|i| if i < 16 { i as f32 } else { (64 - i) as f32 })
+        .collect();
+    let t = Tensor::from_vec(data, (1, 4, 8), &dev).unwrap();
+    let view = t.narrow(1, 2, 2).unwrap(); // contiguous strides, offset 16
+    let from_view = tabicl_candle::quantile::QuantileDist::new(&view).unwrap();
+    let materialized = view.affine(1.0, 0.0).unwrap();
+    let from_copy = tabicl_candle::quantile::QuantileDist::new(&materialized).unwrap();
+    let a: Vec<f32> = from_view
+        .quantiles
+        .flatten_all()
+        .unwrap()
+        .to_vec1()
+        .unwrap();
+    let b: Vec<f32> = from_copy
+        .quantiles
+        .flatten_all()
+        .unwrap()
+        .to_vec1()
+        .unwrap();
+    assert_eq!(a, b, "QuantileDist must sort offset views correctly");
+    let sorted = a.chunks(8).all(|row| row.windows(2).all(|w| w[0] <= w[1]));
+    assert!(sorted, "quantiles must be monotone per row");
+}
