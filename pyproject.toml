@@ -8,4 +8,5 @@ dependencies = [
     "torch>=2.13",
     "numpy>=2",
     "safetensors>=0.4",
+    "huggingface-hub>=0.30",  # scripts/_checkpoints.py fetches the checkpoints
 ]

@@ -19,6 +19,7 @@ src/            the candle port (crate tabicl-candle)
 scripts/        Python side, torch is the oracle:
                   convert_weights.py   ckpt -> safetensors + digest
                   gen_fixtures.py      golden forwards at several (T, H, train)
+                  _checkpoints.py      checkpoint download/cache (helper)
 fixtures/       committed golden fixtures — Rust tests run against these
                 without any Python present
 weights/        local only, gitignored (see weights policy)
@@ -33,6 +34,14 @@ uv sync
 uv run python scripts/convert_weights.py
 uv run python scripts/gen_fixtures.py
 ```
+
+That is the whole setup from a clean checkout — the first script fetches
+the two v2 checkpoints (~110 MB each) from the Hugging Face hub
+(`jingang/TabICL`, public, no token) and both reuse the hub cache
+afterwards. `HF_HOME` or `HF_HUB_CACHE` move that cache; `HF_HUB_OFFLINE=1`
+restricts to what is already there. Which file counts as v2 is read off
+the installed tabicl wrappers, so the checkpoint follows the pinned
+tabicl version.
 
 The Rust side never imports Python. `cargo test` uses the committed
 fixtures; tests that need converted weights skip with a message when

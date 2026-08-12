@@ -3,41 +3,28 @@ pinning sha256 digests into fixtures/DIGESTS (committed — the Rust
 loader verifies against them). Conversion is mechanical: every tensor
 is plain float32, no shared storage (verified 2026-08-11).
 
+The checkpoints download themselves on first run (see _checkpoints.py).
+
     uv run python scripts/convert_weights.py
 """
 
-import glob
 import hashlib
 import json
 import os
-import sys
 
 import torch
 from safetensors.torch import save_file
 
-CHECKPOINTS = {
-    "classifier": "tabicl-classifier-v2-*.ckpt",
-    "regressor": "tabicl-regressor-v2-*.ckpt",
-}
-HUB = os.path.expanduser("~/.cache/huggingface/hub/models--jingang--TabICL")
+from _checkpoints import fetch
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def find(pattern: str) -> str:
-    hits = glob.glob(f"{HUB}/snapshots/*/{pattern}")
-    if not hits:
-        sys.exit(
-            f"no checkpoint matching {pattern} under {HUB} — instantiate a "
-            "TabICL model once (it downloads), or set HF_HOME accordingly"
-        )
-    return sorted(hits)[-1]
 
 
 def main() -> None:
     os.makedirs(f"{ROOT}/weights", exist_ok=True)
     digests = {}
-    for name, pattern in CHECKPOINTS.items():
-        src = find(pattern)
+    for name in ("classifier", "regressor"):
+        src = fetch(name)
         ckpt = torch.load(src, map_location="cpu", weights_only=True)
         out = f"{ROOT}/weights/tabicl-{name}.safetensors"
         save_file({k: v.contiguous() for k, v in ckpt["state_dict"].items()}, out)

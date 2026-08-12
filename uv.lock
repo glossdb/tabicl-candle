@@ -118,6 +118,7 @@ name = "dataraum-tabicl-oracle"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "safetensors" },
     { name = "tabicl" },
@@ -126,6 +127,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "huggingface-hub", specifier = ">=0.30" },
     { name = "numpy", specifier = ">=2" },
     { name = "safetensors", specifier = ">=0.4" },
     { name = "tabicl", specifier = "==2.1.1" },
