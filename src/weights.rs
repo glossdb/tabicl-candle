@@ -45,6 +45,20 @@ fn load_from(
     Ok(Checkpoint { tensors, config })
 }
 
+/// Baked-in layout: the safetensors and config ride the consuming
+/// binary itself (`include_bytes!`), verified against the pinned
+/// digests by that binary's build — there is no file left to verify
+/// at load time.
+pub fn load_bytes(
+    safetensors: &[u8],
+    config_json: &str,
+    device: &Device,
+) -> anyhow::Result<Checkpoint> {
+    let tensors = candle_core::safetensors::load_buffer(safetensors, device)?;
+    let config = crate::config::TabIclConfig::from_json(config_json)?;
+    Ok(Checkpoint { tensors, config })
+}
+
 fn verify_digest(digests: &Path, which: &str, st: &PathBuf) -> anyhow::Result<()> {
     let digests: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(digests)?)?;
     let expected = digests[which]["sha256"]

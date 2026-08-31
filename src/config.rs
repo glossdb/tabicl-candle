@@ -19,6 +19,10 @@ impl TabIclConfig {
         Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
     }
 
+    pub fn from_json(json: &str) -> anyhow::Result<Self> {
+        Ok(serde_json::from_str(json)?)
+    }
+
     pub fn int(&self, key: &str) -> Option<i64> {
         self.raw.get(key).and_then(|v| v.as_i64())
     }

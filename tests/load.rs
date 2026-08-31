@@ -41,3 +41,24 @@ fn weights_load_and_verify() {
         );
     }
 }
+
+#[test]
+fn weights_load_from_bytes() {
+    let st = root().join("weights/tabicl-regressor.safetensors");
+    if !st.exists() {
+        eprintln!("skipping: run scripts/convert_weights.py first");
+        return;
+    }
+    let bytes = std::fs::read(&st).unwrap();
+    let config =
+        std::fs::read_to_string(root().join("weights/tabicl-regressor.config.json")).unwrap();
+    let ckpt =
+        tabicl_candle::weights::load_bytes(&bytes, &config, &candle_core::Device::Cpu).unwrap();
+    assert!(
+        ckpt.tensors.len() > 100,
+        "expected a full state dict, got {}",
+        ckpt.tensors.len()
+    );
+    // The bytes-loaded checkpoint builds the same model the file path does.
+    tabicl_candle::tabicl::TabIcl::from_checkpoint(ckpt).unwrap();
+}

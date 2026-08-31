@@ -21,6 +21,7 @@ ndarray-npy = "0.9"
 
 [features]
 metal = ["candle-core/metal", "candle-nn/metal"]
+cuda = ["candle-core/cuda", "candle-nn/cuda"]
 
 # The fidelity suite runs hundreds of small forwards; keep dependency
 # kernels (candle's gemm above all) optimized even in dev builds.
