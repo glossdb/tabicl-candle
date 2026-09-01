@@ -289,6 +289,9 @@ reflected in code, tests, and README:
 - [ ] Delete the `quantile.rs` argsort workaround when a candle release
       ships #3875 (validated 2026-09-01 against main: full suite green
       without it)
-- [ ] Hub PR: safetensors + config.json to `jingang/TabICL`
+- [ ] Hub PR: safetensors + config.json to `jingang/TabICL` — prepared
+      2026-09-01: `verify/python/upload_hub_safetensors.py` (dry run by
+      default, verifies pinned digests, remote names mirror the source
+      ckpt basenames); run with `--create-pr` after `hf auth login`
 - [ ] candle-transformers PR: `models/tabicl.rs`; candle-examples: `examples/tabicl/`
 - [ ] After upstream lands: delete local forward, depend on candle-transformers

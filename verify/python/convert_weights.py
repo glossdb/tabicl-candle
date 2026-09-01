@@ -1,7 +1,8 @@
 """Convert the TabICL torch checkpoints to safetensors under weights/,
-pinning sha256 digests into fixtures/DIGESTS (committed — the Rust
-loader verifies against them). Conversion is mechanical: every tensor
-is plain float32, no shared storage (verified 2026-08-11).
+pinning sha256 digests into fixtures/DIGESTS (committed — the load
+suite verifies the local weights against them at test time). Conversion
+is mechanical: every tensor is plain float32, no shared storage
+(verified 2026-08-11).
 
 The checkpoints download themselves on first run (see _checkpoints.py).
 
