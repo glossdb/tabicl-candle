@@ -2,9 +2,9 @@
 
 TabICL served from Rust: a hand-port of the TabICL forward pass to
 [candle](https://github.com/huggingface/candle), with the Python side
-that grades it. One repo, one unit — the port, the weight conversion,
-the golden fixtures, and the fidelity suite live together so the whole
-thing can be published as one piece.
+that grades it. One repo, one workspace — the port, the weight
+conversion, the golden fixtures, and the fidelity suite live together;
+`crates/tabicl-model` is cut for donation upstream (see `SPLIT.md`).
 
 Why a hand-port and not ONNX: a traced graph bakes `log(train_size)`
 into the attention scales — silently wrong the moment the context size
@@ -14,15 +14,28 @@ data. Full evaluation with probes:
 
 ## Layout
 
+Workspace of three crates plus the Python oracle side; each crate
+carries its own committed fixtures — Rust tests run against these
+without any Python present.
+
 ```
-src/            the candle port (crate tabicl-candle)
-scripts/        Python side, torch is the oracle:
-                  convert_weights.py   ckpt -> safetensors + digest
-                  gen_fixtures.py      golden forwards at several (T, H, train)
-                  _checkpoints.py      checkpoint download/cache (helper)
-fixtures/       committed golden fixtures — Rust tests run against these
-                without any Python present
-weights/        local only, gitignored (see weights policy)
+crates/
+  tabicl-model/       the forward-pass port (donation candidate)
+    fixtures/         golden torch forwards + quantile read-out fixtures
+    tests/            fidelity.rs (stage 1), load.rs
+  tabicl-inference/   required input preprocessing, wrappers, ensemble,
+    fixtures/         density read; sklearn parity fixtures
+    tests/            wrapper.rs, classifier.rs, power.rs (stage 2)
+verify/
+  python/             Python side, torch is the oracle:
+                        convert_weights.py   ckpt -> safetensors + digest
+                        gen_fixtures.py      golden forwards at (T, H, train)
+                        _checkpoints.py      checkpoint download/cache
+  experiments/        unpublished crate: E-suite replays (stage 3),
+                      readout.rs, their fixtures
+fixtures/             DIGESTS only — pinned weight digests, checked by
+                      the load suite at test time (never at runtime)
+weights/              local only, gitignored (see weights policy)
 ```
 
 ## Environments
@@ -31,8 +44,8 @@ The Python side needs torch + tabicl; the repo carries its own env:
 
 ```bash
 uv sync
-uv run python scripts/convert_weights.py
-uv run python scripts/gen_fixtures.py
+uv run python verify/python/convert_weights.py
+uv run python verify/python/gen_fixtures.py
 ```
 
 That is the whole setup from a clean checkout — the first script fetches
@@ -51,8 +64,13 @@ fixtures; tests that need converted weights skip with a message when
 
 - Checkpoints (jingang/TabICL v2, ~110 MB each) are never in git.
 - `convert_weights.py` converts the torch checkpoints to safetensors
-  under `weights/`, pins sha256 digests into `fixtures/DIGESTS`
-  (committed), and the loader verifies them.
+  under `weights/` and pins sha256 digests into `fixtures/DIGESTS`
+  (committed).
+- Digest verification happens where the bytes enter, not on every
+  load: the load suite checks the local weights against the pinned
+  digests at test time, and a packaged build verifies before baking
+  (`load_bytes` carries bytes the build already checked). The runtime
+  loader does not hash.
 - Local runs: weights are cached under `weights/` once and reused.
 - **Containers bake the weights in.** An image build runs the
   conversion (or copies a converted `weights/`) at build time — a
@@ -109,13 +127,13 @@ fixtures; tests that need converted weights skip with a message when
    protocol's 15k-row fits are a torch-on-MPS job, not a standing CPU
    test): recorded permutations and noise, per-permutation parity, and
    the read-out contract end to end, AUROC agreeing with the pinned
-   oracle to 8e-4 (`tests/e12s3.rs`).
+   oracle to 8e-4 (`verify/experiments/tests/e12s3.rs`).
 
    *What-if (the point read).* The E4 counterfactual walk (fine grid,
    coarse grid, two-lever interaction; 21 fits against exact generated
    truth) reproduces from the Rust side at 5.7e-5 max relative against
    the pinned oracle, harness grades matching on every fit
-   (`tests/e4.rs`). The pinned-vs-recorded comparison splits the
+   (`verify/experiments/tests/e4.rs`). The pinned-vs-recorded comparison splits the
    ensemble verdict for the first time: on the dense grid (7 factors,
    42 train rows) the pinned member matches the recorded 8-member run
    within thousandths of median APE, but on the sparse grid (3
@@ -134,7 +152,7 @@ fixtures; tests that need converted weights skip with a message when
    23/24 individual call agreement per set), and the Rust classifier
    wrapper matches the pinned oracle at ~7e-6 max probability
    difference with every accuracy figure equal
-   (`scripts/gen_e22_fixture.py`, `tests/e22.rs`). The FULL−BLIND gap
+   (`verify/python/gen_e22_fixture.py`, `verify/experiments/tests/e22.rs`). The FULL−BLIND gap
    — the value of the glossary-supplied invariant — survives the
    port untouched.
 
@@ -150,7 +168,7 @@ fixtures; tests that need converted weights skip with a message when
    ported: the Yeo-Johnson power stage (`power.rs` — lambda MLE via
    the bounded-Brent `fminbound` port, matching sklearn's
    `PowerTransformer(standardize=True)` at 1e-6 on six fixture
-   matrices, `tests/power.rs`), the "power" pipeline slot between
+   matrices, `crates/tabicl-inference/tests/power.rs`), the "power" pipeline slot between
    scaling and the outlier stage, per-member feature permutations,
    and quantile averaging across members (`ensemble.rs`). Graded
    against a full-default sklearn rerun of all 21 E4 fits — which
@@ -158,13 +176,46 @@ fixtures; tests that need converted weights skip with a message when
    the fixture *is* the recorded configuration (4 members on the
    2-feature fits, 6 on the 3-feature; the "8" default truncates at
    shuffles x norms) — member configs injected exactly, final bands
-   matching at 2.1e-4 max relative (`tests/e4_ensemble.rs`).
+   matching at 2.1e-4 max relative (`verify/experiments/tests/e4_ensemble.rs`).
    Production member generation uses this crate's own RNG (latin
    squares crossed with both norms, `EnsembleMember::generate`);
    which permutation a member draws deliberately differs from
    sklearn's Python-`random` selection — the diversity, not the
    identity, is what the ensemble buys. The classifier-side ensemble
    (class shuffles) stays out until a categorical read needs it.
+
+## Numerics: what is pinned and what travels
+
+The exact figures above ("zero coverage flips", "labels exactly
+equal", accuracy counts equal) are pinned-environment results: pinned
+fixtures, pinned weights, one backend, one machine. There they
+reproduce bit-stably on every run — floating point is deterministic,
+and there is no run-to-run noise to average over. What moves results
+is a change of environment, on three axes: backend (CPU / Metal /
+CUDA), CPU SIMD dispatch (candle's gemm picks kernels by CPU features
+at runtime), and the platform libm (`ln`/`exp` differ in last ULPs
+across libc implementations — only `+ − × ÷ √` are correctly rounded
+everywhere).
+
+Consumers should read outputs in two stability classes:
+
+- **Continuous** (bands, probabilities, scores): environment-dependent
+  at ~1e-4. Compare with tolerance, never bit-equality.
+- **Discrete** (labels, rankings, coverage indicators): stable within
+  a pinned environment; near-threshold values can flip across
+  environments, in any implementation, ported or off-the-shelf. Do not
+  persist, dedupe, or cross-compare them expecting equality unless the
+  deployment pins one backend and platform. (The note below on row NLL
+  over near-deterministic conditionals — ordinal, not cardinal — is
+  the extreme case of the same effect.)
+
+The host-side f64 preprocessing layer is sequential, fixed-order, and
+free of FMA contraction: deterministic per pinned toolchain and
+platform, kept that way so any fixture diff localizes to the device
+forward. It is not cross-platform bit-stable (libm transcendentals).
+If a product feature ever needs same-input-same-answer across
+machines, that is a deployment decision — pin one backend and platform
+and say so; numerics will not provide it.
 
 ## Status
 
@@ -245,4 +296,4 @@ reads stay put (AUROC shifted 8e-4). Downstream consumers should
 treat row NLL on such columns as ordinal, not cardinal. The read-out
 contract itself (`readout.rs`: NLL, the q95 reference threshold,
 batch score, tie-averaged AUROC) is ported from the harness and
-graded in `tests/e12s3.rs`.
+graded in `verify/experiments/tests/e12s3.rs`.

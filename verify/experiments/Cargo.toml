@@ -1,0 +1,20 @@
+[package]
+name = "tabicl-experiments"
+description = "dataraum-internal: recorded tfmeval experiment replays (E-suite) and the harness read-out math"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tabicl-model.workspace = true
+tabicl-inference.workspace = true
+candle-core.workspace = true
+
+[dev-dependencies]
+ndarray.workspace = true
+ndarray-npy.workspace = true
+
+[features]
+metal = ["candle-core/metal", "tabicl-model/metal", "tabicl-inference/metal"]
+cuda = ["candle-core/cuda", "tabicl-model/cuda", "tabicl-inference/cuda"]

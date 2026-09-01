@@ -1,27 +1,27 @@
-[package]
-name = "tabicl-candle"
+[workspace]
+resolver = "3"
+members = [
+    "crates/tabicl-model",
+    "crates/tabicl-inference",
+    "verify/experiments",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
-description = "TabICL forward pass in candle; graded against committed torch fixtures"
 license = "MIT OR Apache-2.0"
 
-[dependencies]
+[workspace.dependencies]
 candle-core = "0.11"
 candle-nn = "0.11"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-anyhow = "1"
 sha2 = "0.10"
 hex = "0.4"
-rayon = "1"
-
-[dev-dependencies]
 ndarray = "0.16"
 ndarray-npy = "0.9"
-
-[features]
-metal = ["candle-core/metal", "candle-nn/metal"]
-cuda = ["candle-core/cuda", "candle-nn/cuda"]
+tabicl-model = { path = "crates/tabicl-model" }
+tabicl-inference = { path = "crates/tabicl-inference" }
 
 # The fidelity suite runs hundreds of small forwards; keep dependency
 # kernels (candle's gemm above all) optimized even in dev builds.
