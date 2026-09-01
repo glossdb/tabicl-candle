@@ -9,7 +9,7 @@
 //! class-shuffle correction is a no-op — the same shape the density
 //! read's inner classifiers have.
 
-use candle_core::{D, Device, Tensor};
+use candle_core::{D, Device, Result, Tensor};
 
 use crate::regressor::Preprocessor;
 use tabicl_model::tabicl::TabIcl;
@@ -62,7 +62,7 @@ impl<'a> TabIclClassifier<'a> {
         x: &[f64],
         rows: usize,
         device: &Device,
-    ) -> anyhow::Result<Vec<f32>> {
+    ) -> Result<Vec<f32>> {
         let k = self.prep.n_kept();
         let t = self.prep.n_train + rows;
         let mut all = self.prep.x_train.clone();
@@ -74,12 +74,13 @@ impl<'a> TabIclClassifier<'a> {
         let out = self.model.forward(&x, &y)?; // (1, test, max_classes)
 
         let n_classes = self.classes.len();
-        anyhow::ensure!(
-            n_classes <= out.dim(D::Minus1)?,
-            "{} classes exceed the model's max_classes {}",
-            n_classes,
-            out.dim(D::Minus1)?
-        );
+        if n_classes > out.dim(D::Minus1)? {
+            candle_core::bail!(
+                "{} classes exceed the model's max_classes {}",
+                n_classes,
+                out.dim(D::Minus1)?
+            );
+        }
         let logits: Vec<f32> = out
             .narrow(D::Minus1, 0, n_classes)?
             .contiguous()?
@@ -101,7 +102,7 @@ impl<'a> TabIclClassifier<'a> {
     }
 
     /// Argmax over `predict_proba`, mapped back to class values.
-    pub fn predict(&self, x: &[f64], rows: usize, device: &Device) -> anyhow::Result<Vec<f64>> {
+    pub fn predict(&self, x: &[f64], rows: usize, device: &Device) -> Result<Vec<f64>> {
         let proba = self.predict_proba(x, rows, device)?;
         Ok(proba
             .chunks_exact(self.classes.len())

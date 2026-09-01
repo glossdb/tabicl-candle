@@ -8,7 +8,6 @@ license.workspace = true
 [dependencies]
 tabicl-model.workspace = true
 candle-core.workspace = true
-anyhow.workspace = true
 
 [dev-dependencies]
 ndarray.workspace = true

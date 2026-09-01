@@ -10,7 +10,6 @@ license.workspace = true
 tabicl-model.workspace = true
 tabicl-inference.workspace = true
 candle-core.workspace = true
-anyhow.workspace = true
 
 [dev-dependencies]
 ndarray.workspace = true

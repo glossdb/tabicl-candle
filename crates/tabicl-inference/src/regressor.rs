@@ -8,7 +8,7 @@
 //! Multi-member ensembling (norm methods beyond "none", feature
 //! shuffles) is deliberately out of scope until this member is graded.
 
-use candle_core::{Device, Tensor};
+use candle_core::{Device, Result, Tensor};
 
 use crate::power::PowerStage;
 use tabicl_model::quantile::QuantileDist;
@@ -236,7 +236,7 @@ impl<'a> TabIclRegressor<'a> {
 
     /// One forward over [train; test], read out as a quantile
     /// distribution still carrying the y scale.
-    pub fn predict(&self, x: &[f64], rows: usize, device: &Device) -> anyhow::Result<Prediction> {
+    pub fn predict(&self, x: &[f64], rows: usize, device: &Device) -> Result<Prediction> {
         let k = self.prep.n_kept();
         let t = self.prep.n_train + rows;
         let mut all = self.prep.x_train.clone();
@@ -266,23 +266,23 @@ pub struct Prediction {
 }
 
 impl Prediction {
-    fn unscale(&self, t: Tensor) -> anyhow::Result<Tensor> {
+    fn unscale(&self, t: Tensor) -> Result<Tensor> {
         Ok(t.affine(self.y_scale, self.y_mean)?)
     }
 
     /// (test,) — the wrapper's `output_type="mean"`.
-    pub fn mean(&self) -> anyhow::Result<Tensor> {
+    pub fn mean(&self) -> Result<Tensor> {
         self.unscale(self.dist.mean()?.squeeze(0)?)
     }
 
     /// (test, alphas.len()) — the wrapper's `output_type="quantiles"`.
-    pub fn quantiles(&self, alphas: &[f64]) -> anyhow::Result<Tensor> {
+    pub fn quantiles(&self, alphas: &[f64]) -> Result<Tensor> {
         self.unscale(self.dist.icdf(alphas)?.squeeze(0)?)
     }
 
     /// (test, n_quantiles) — the wrapper's `output_type="raw_quantiles"`
     /// (monotone: the wrapper returns the distribution's sorted grid).
-    pub fn raw_quantiles(&self) -> anyhow::Result<Tensor> {
+    pub fn raw_quantiles(&self) -> Result<Tensor> {
         self.unscale(self.dist.quantiles.squeeze(0)?)
     }
 }

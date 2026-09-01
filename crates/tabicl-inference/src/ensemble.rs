@@ -12,7 +12,7 @@
 //! differs from sklearn's Python-`random` selection. The member set's
 //! diversity, not its identity, is what the ensemble buys.
 
-use candle_core::{Device, Tensor};
+use candle_core::{Device, Result, Tensor};
 
 use tabicl_model::quantile::QuantileDist;
 use crate::regressor::Preprocessor;
@@ -171,7 +171,7 @@ impl<'a> TabIclEnsemble<'a> {
         rows: usize,
         alphas: &[f64],
         device: &Device,
-    ) -> anyhow::Result<Vec<f64>> {
+    ) -> Result<Vec<f64>> {
         let t = self.n_train + rows;
         let mut acc = vec![0.0f64; rows * alphas.len()];
         for member in &self.members {

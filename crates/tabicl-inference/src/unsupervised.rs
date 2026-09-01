@@ -19,7 +19,7 @@
 //! pool. The convenience reads (`score_samples`, `score_log_mean`)
 //! run the decomposition sequentially.
 
-use candle_core::{Device, Tensor};
+use candle_core::{Device, Result, Tensor};
 
 use crate::classifier::TabIclClassifier;
 use tabicl_model::quantile::QuantileDist;
@@ -95,7 +95,7 @@ impl<'a> Unsupervised<'a> {
         permutations: &[Vec<usize>],
         noise: &mut dyn FnMut(usize) -> Vec<f32>,
         device: &Device,
-    ) -> anyhow::Result<Vec<f64>> {
+    ) -> Result<Vec<f64>> {
         let mut acc = vec![0f64; test_rows];
         for perm in permutations {
             let lp = self.log_density(x_test, test_rows, perm, noise, device)?;
@@ -144,7 +144,7 @@ impl<'a> Unsupervised<'a> {
         test_rows: usize,
         task: Task,
         device: &Device,
-    ) -> anyhow::Result<Vec<f64>> {
+    ) -> Result<Vec<f64>> {
         assert_eq!(x_test.len(), test_rows * self.cols);
         self.conditional(x_test, test_rows, &task.cond, task.col, task.dummy, device)
     }
@@ -157,7 +157,7 @@ impl<'a> Unsupervised<'a> {
         perm: &[usize],
         noise: &mut dyn FnMut(usize) -> Vec<f32>,
         device: &Device,
-    ) -> anyhow::Result<Vec<f64>> {
+    ) -> Result<Vec<f64>> {
         let perm = perm.to_vec();
         let tasks = self.tasks(test_rows, std::slice::from_ref(&perm), noise);
         self.sum_tasks(x_test, test_rows, tasks, device)
@@ -175,7 +175,7 @@ impl<'a> Unsupervised<'a> {
         permutations: &[Vec<usize>],
         noise: &mut dyn FnMut(usize) -> Vec<f32>,
         device: &Device,
-    ) -> anyhow::Result<Vec<f64>> {
+    ) -> Result<Vec<f64>> {
         let tasks = self.tasks(test_rows, permutations, noise);
         let acc = self.sum_tasks(x_test, test_rows, tasks, device)?;
         let k = permutations.len() as f64;
@@ -188,7 +188,7 @@ impl<'a> Unsupervised<'a> {
         test_rows: usize,
         tasks: Vec<Task>,
         device: &Device,
-    ) -> anyhow::Result<Vec<f64>> {
+    ) -> Result<Vec<f64>> {
         let mut acc = vec![0f64; test_rows];
         for task in tasks {
             let lp = self.run(x_test, test_rows, task, device)?;
@@ -216,7 +216,7 @@ impl<'a> Unsupervised<'a> {
         col: usize,
         dummy: Option<(Vec<f32>, Vec<f32>)>,
         device: &Device,
-    ) -> anyhow::Result<Vec<f64>> {
+    ) -> Result<Vec<f64>> {
         let train_rows: Vec<usize> = (0..self.rows)
             .filter(|&r| !self.x[r * self.cols + col].is_nan())
             .collect();
@@ -288,7 +288,7 @@ impl<'a> Unsupervised<'a> {
         observed: &[f32],
         log_p: &mut [f64],
         device: &Device,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         let est = TabIclRegressor::fit(self.reg, x_tr, train_rows.len(), n_cond, y);
         let pred = est.predict(x_te, log_p.len(), device)?;
 
@@ -320,7 +320,7 @@ impl<'a> Unsupervised<'a> {
         observed: &[f32],
         log_p: &mut [f64],
         device: &Device,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         let clf = self.clf.expect("checked at fit");
         let y_int: Vec<f64> = y.iter().map(|v| v.trunc()).collect();
         let est = TabIclClassifier::fit(clf, x_tr, train_rows.len(), n_cond, &y_int);
