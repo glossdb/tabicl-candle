@@ -1,0 +1,20 @@
+[package]
+name = "tabicl-inference"
+description = "TabICL's required input preprocessing and inference wrappers: sklearn/scipy-parity normalization, ensemble, chain-rule density read"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tabicl-model.workspace = true
+candle-core.workspace = true
+anyhow.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+ndarray.workspace = true
+ndarray-npy.workspace = true
+
+[features]
+metal = ["candle-core/metal", "tabicl-model/metal"]
+cuda = ["candle-core/cuda", "tabicl-model/cuda"]
