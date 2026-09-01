@@ -4,6 +4,17 @@
 //! "fit" happens at serving time on every request. Fit statistics are
 //! computed host-side in f64 with numpy/sklearn/scipy semantics; the
 //! model sees the f32 cast.
+//!
+//! ## Output stability classes
+//!
+//! Continuous outputs (bands, probabilities, scores) are
+//! environment-dependent at ~1e-4 (backend, SIMD dispatch, libm):
+//! compare with tolerance, never bit-equality. Discrete outputs
+//! (labels, rankings, coverage indicators) are stable within a pinned
+//! environment but can flip near thresholds across environments — do
+//! not persist, dedupe, or cross-compare them expecting equality
+//! unless the deployment pins one backend and platform. Row NLL over
+//! near-deterministic conditionals is ordinal, not cardinal.
 
 pub use candle_core::Device; // consumers pick a device without a candle dep
 

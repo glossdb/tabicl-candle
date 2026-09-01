@@ -1,9 +1,12 @@
 # Split & donate plan
 
 Status: analysis agreed 2026-09-01 and corrected the same day (see the
-determinism record and the "(corrected)" markers); step 1 landed on branch
-`workspace-split`, both suites green on CPU and Metal. This records the
-conclusions of the review session so it can be picked up cold.
+determinism record and the "(corrected)" markers). Local execution done
+2026-09-01 on branch `workspace-split` — steps 1 and 2, rayon/anyhow/
+sha2-hex cleanups, README numerics scope — every suite green on CPU and
+Metal after each commit. Open: the four upstream donations (candle-core
+argsort fix, hub safetensors, candle-transformers model, candle-examples)
+and the post-upstream deletion of the local forward.
 
 Step-1 deviations from the plan below: `load.rs` lives in
 `tabicl-model/tests` (it imports only the loader/forward API, despite
@@ -271,8 +274,10 @@ reflected in code, tests, and README:
       (fixture-time gate), sha2/hex are dev-dependencies of tabicl-model
 - [x] Move `readout.rs` + E-experiment tests/fixtures to `verify/experiments`
       (part of step 1)
-- [ ] Add environment-scope wording to README (claims already pinned-scoped;
-      see the corrected determinism record)
+- [x] Add environment-scope wording to README (claims already pinned-scoped;
+      see the corrected determinism record) — 2026-09-01: "Numerics: what is
+      pinned and what travels" section; stability classes in the
+      tabicl-inference crate docs
 - [ ] candle-core PR: argsort view-offset fix + edge-case test
 - [ ] Hub PR: safetensors + config.json to `jingang/TabICL`
 - [ ] candle-transformers PR: `models/tabicl.rs`; candle-examples: `examples/tabicl/`

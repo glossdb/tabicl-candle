@@ -2,9 +2,9 @@
 
 TabICL served from Rust: a hand-port of the TabICL forward pass to
 [candle](https://github.com/huggingface/candle), with the Python side
-that grades it. One repo, one unit — the port, the weight conversion,
-the golden fixtures, and the fidelity suite live together so the whole
-thing can be published as one piece.
+that grades it. One repo, one workspace — the port, the weight
+conversion, the golden fixtures, and the fidelity suite live together;
+`crates/tabicl-model` is cut for donation upstream (see `SPLIT.md`).
 
 Why a hand-port and not ONNX: a traced graph bakes `log(train_size)`
 into the attention scales — silently wrong the moment the context size
@@ -183,6 +183,39 @@ fixtures; tests that need converted weights skip with a message when
    sklearn's Python-`random` selection — the diversity, not the
    identity, is what the ensemble buys. The classifier-side ensemble
    (class shuffles) stays out until a categorical read needs it.
+
+## Numerics: what is pinned and what travels
+
+The exact figures above ("zero coverage flips", "labels exactly
+equal", accuracy counts equal) are pinned-environment results: pinned
+fixtures, pinned weights, one backend, one machine. There they
+reproduce bit-stably on every run — floating point is deterministic,
+and there is no run-to-run noise to average over. What moves results
+is a change of environment, on three axes: backend (CPU / Metal /
+CUDA), CPU SIMD dispatch (candle's gemm picks kernels by CPU features
+at runtime), and the platform libm (`ln`/`exp` differ in last ULPs
+across libc implementations — only `+ − × ÷ √` are correctly rounded
+everywhere).
+
+Consumers should read outputs in two stability classes:
+
+- **Continuous** (bands, probabilities, scores): environment-dependent
+  at ~1e-4. Compare with tolerance, never bit-equality.
+- **Discrete** (labels, rankings, coverage indicators): stable within
+  a pinned environment; near-threshold values can flip across
+  environments, in any implementation, ported or off-the-shelf. Do not
+  persist, dedupe, or cross-compare them expecting equality unless the
+  deployment pins one backend and platform. (The note below on row NLL
+  over near-deterministic conditionals — ordinal, not cardinal — is
+  the extreme case of the same effect.)
+
+The host-side f64 preprocessing layer is sequential, fixed-order, and
+free of FMA contraction: deterministic per pinned toolchain and
+platform, kept that way so any fixture diff localizes to the device
+forward. It is not cross-platform bit-stable (libm transcendentals).
+If a product feature ever needs same-input-same-answer across
+machines, that is a deployment decision — pin one backend and platform
+and say so; numerics will not provide it.
 
 ## Status
 
