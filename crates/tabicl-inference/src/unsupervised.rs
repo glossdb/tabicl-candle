@@ -12,6 +12,12 @@
 //! feature has no conditioning (numpy-Generator noise in the source).
 //! Grading replays the oracle's recorded streams; production supplies
 //! its own.
+//!
+//! Scheduling is the caller's: `tasks` decomposes the read into
+//! independent conditionals (noise pre-drawn in sequential order) and
+//! `run` executes one — this library never spawns threads or picks a
+//! pool. The convenience reads (`score_samples`, `score_log_mean`)
+//! run the decomposition sequentially.
 
 use candle_core::{Device, Tensor};
 
@@ -28,6 +34,17 @@ pub const MIN_SAMPLES_PER_CONDITIONAL: usize = 5;
 /// The probability floor for categorical conditionals: unseen classes
 /// score this, and every looked-up probability is clipped to it.
 pub const PROBA_FLOOR: f64 = 1e-10;
+
+/// One independent unit of the chain-rule read: one feature's
+/// conditional within one permutation. `cond` preserves the
+/// permutation's order; the pre-drawn dummy-noise columns (empty
+/// conditioning only) ride along, so tasks can run under any schedule
+/// and still reproduce the sequential read.
+pub struct Task {
+    pub cond: Vec<usize>,
+    pub col: usize,
+    dummy: Option<(Vec<f32>, Vec<f32>)>,
+}
 
 pub struct Unsupervised<'a> {
     reg: &'a TabIcl,
@@ -90,6 +107,48 @@ impl<'a> Unsupervised<'a> {
         Ok(acc.into_iter().map(|s| (s / k).exp()).collect())
     }
 
+    /// Decompose the read into its independent units — the caller
+    /// schedules: sequentially, on its own thread pool (the
+    /// conditionals are independent), or in order on an accelerator's
+    /// one queue. Tasks come back in the sequential (permutation,
+    /// position) order, and the dummy-noise streams are drawn here in
+    /// that order, so any schedule reproduces the sequential read.
+    pub fn tasks(
+        &self,
+        test_rows: usize,
+        permutations: &[Vec<usize>],
+        noise: &mut dyn FnMut(usize) -> Vec<f32>,
+    ) -> Vec<Task> {
+        let mut tasks = Vec::new();
+        for perm in permutations {
+            for (i, &col) in perm.iter().enumerate() {
+                let train_len = self.usable_train_rows(col);
+                if train_len < MIN_SAMPLES_PER_CONDITIONAL {
+                    continue;
+                }
+                let dummy = (i == 0).then(|| (noise(train_len), noise(test_rows)));
+                tasks.push(Task {
+                    cond: perm[..i].to_vec(),
+                    col,
+                    dummy,
+                });
+            }
+        }
+        tasks
+    }
+
+    /// Run one task: (test_rows,) per-row conditional log densities.
+    pub fn run(
+        &self,
+        x_test: &[f32],
+        test_rows: usize,
+        task: Task,
+        device: &Device,
+    ) -> anyhow::Result<Vec<f64>> {
+        assert_eq!(x_test.len(), test_rows * self.cols);
+        self.conditional(x_test, test_rows, &task.cond, task.col, task.dummy, device)
+    }
+
     /// One permutation's summed per-feature log densities, (test_rows,).
     pub fn log_density(
         &self,
@@ -99,30 +158,16 @@ impl<'a> Unsupervised<'a> {
         noise: &mut dyn FnMut(usize) -> Vec<f32>,
         device: &Device,
     ) -> anyhow::Result<Vec<f64>> {
-        assert_eq!(x_test.len(), test_rows * self.cols);
-        let mut log_p = vec![0f64; test_rows];
-
-        for (i, &col) in perm.iter().enumerate() {
-            let train_len = self.usable_train_rows(col);
-            if train_len < MIN_SAMPLES_PER_CONDITIONAL {
-                continue;
-            }
-            let dummy = (i == 0).then(|| (noise(train_len), noise(test_rows)));
-            let lp = self.conditional(x_test, test_rows, &perm[..i], col, dummy, device)?;
-            for (a, v) in log_p.iter_mut().zip(lp) {
-                *a += v;
-            }
-        }
-        Ok(log_p)
+        let perm = perm.to_vec();
+        let tasks = self.tasks(test_rows, std::slice::from_ref(&perm), noise);
+        self.sum_tasks(x_test, test_rows, tasks, device)
     }
 
     /// Mean per-row log density across permutations — the log-space read
     /// the misfit door consumes (`score_samples` keeps the oracle's exp).
-    /// The feature conditionals are independent, so on CPU they run in
-    /// parallel on the caller's rayon pool; an accelerator keeps its one
-    /// queue and runs them in order. The dummy-noise streams are drawn
-    /// up front in the sequential order, so the result is identical to
-    /// summing `log_density` per permutation.
+    /// Sequential over the decomposition; a caller that wants
+    /// parallelism schedules `tasks` on its own pool and averages the
+    /// summed results itself.
     pub fn score_log_mean(
         &self,
         x_test: &[f32],
@@ -131,40 +176,27 @@ impl<'a> Unsupervised<'a> {
         noise: &mut dyn FnMut(usize) -> Vec<f32>,
         device: &Device,
     ) -> anyhow::Result<Vec<f64>> {
-        assert_eq!(x_test.len(), test_rows * self.cols);
-        type Task = (usize, usize, Option<(Vec<f32>, Vec<f32>)>);
-        let mut tasks: Vec<Task> = Vec::new();
-        for (p, perm) in permutations.iter().enumerate() {
-            for (i, &col) in perm.iter().enumerate() {
-                let train_len = self.usable_train_rows(col);
-                if train_len < MIN_SAMPLES_PER_CONDITIONAL {
-                    continue;
-                }
-                let dummy = (i == 0).then(|| (noise(train_len), noise(test_rows)));
-                tasks.push((p, i, dummy));
-            }
-        }
-        let run = |(p, i, dummy): Task| -> anyhow::Result<Vec<f64>> {
-            let perm = &permutations[p];
-            self.conditional(x_test, test_rows, &perm[..i], perm[i], dummy, device)
-        };
-        let partials: Vec<Vec<f64>> = if matches!(device, Device::Cpu) {
-            use rayon::prelude::*;
-            tasks
-                .into_par_iter()
-                .map(run)
-                .collect::<anyhow::Result<_>>()?
-        } else {
-            tasks.into_iter().map(run).collect::<anyhow::Result<_>>()?
-        };
+        let tasks = self.tasks(test_rows, permutations, noise);
+        let acc = self.sum_tasks(x_test, test_rows, tasks, device)?;
+        let k = permutations.len() as f64;
+        Ok(acc.into_iter().map(|s| s / k).collect())
+    }
+
+    fn sum_tasks(
+        &self,
+        x_test: &[f32],
+        test_rows: usize,
+        tasks: Vec<Task>,
+        device: &Device,
+    ) -> anyhow::Result<Vec<f64>> {
         let mut acc = vec![0f64; test_rows];
-        for lp in partials {
+        for task in tasks {
+            let lp = self.run(x_test, test_rows, task, device)?;
             for (a, v) in acc.iter_mut().zip(lp) {
                 *a += v;
             }
         }
-        let k = permutations.len() as f64;
-        Ok(acc.into_iter().map(|s| s / k).collect())
+        Ok(acc)
     }
 
     fn usable_train_rows(&self, col: usize) -> usize {
