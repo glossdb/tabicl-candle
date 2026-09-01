@@ -8,9 +8,9 @@ conclusions of the review session so it can be picked up cold.
 Step-1 deviations from the plan below: `load.rs` lives in
 `tabicl-model/tests` (it imports only the loader/forward API, despite
 sitting in the wrapper-consumers audience list); workspace-root
-`fixtures/` survives holding only `DIGESTS`, because `weights::load`'s
-repo-layout contract reads it there — it dies with the digest mechanism
-(sha2/hex item).
+`fixtures/` survives holding only `DIGESTS` — since the sha2/hex item
+landed it is read by the load suite's fixture-time digest gate, never
+by the runtime loader.
 
 ## Verdict
 
@@ -264,8 +264,11 @@ reflected in code, tests, and README:
       donation-shaped constructor, `from_checkpoint` stays as convenience;
       `nn.rs` keeps only the custom pieces (skip protocol, OneHotAndLinear,
       shape-free loaders); every gate held, exact discrete asserts included
-- [ ] Drop rayon from `unsupervised.rs`; expose task decomposition instead
-- [ ] Drop anyhow from public APIs; drop sha2/hex from `[dependencies]`
+- [x] Drop rayon from `unsupervised.rs`; expose task decomposition instead
+      — 2026-09-01; `tasks()`/`run()` public, convenience reads sequential
+- [x] Drop anyhow from public APIs; drop sha2/hex from `[dependencies]`
+      — 2026-09-01; digest verification moved to the load suite
+      (fixture-time gate), sha2/hex are dev-dependencies of tabicl-model
 - [x] Move `readout.rs` + E-experiment tests/fixtures to `verify/experiments`
       (part of step 1)
 - [ ] Add environment-scope wording to README (claims already pinned-scoped;

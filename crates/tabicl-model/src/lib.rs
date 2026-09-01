@@ -6,8 +6,9 @@
 //!
 //! Grading: `fixtures/` carries torch train-mode forwards at several
 //! (T, H, train_size); stage 1 of the fidelity gate is matching them at
-//! ~1e-4 fp32. Weights load from the workspace's `weights/*.safetensors`,
-//! verified against the workspace's `fixtures/DIGESTS`.
+//! ~1e-4 fp32. Weights load from the workspace's `weights/*.safetensors`;
+//! the load suite checks them against the pinned `fixtures/DIGESTS` at
+//! test time (the loader itself does not hash).
 
 pub use candle_core::Device; // consumers pick a device without a candle dep
 

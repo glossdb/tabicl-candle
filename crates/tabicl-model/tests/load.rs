@@ -1,6 +1,8 @@
 //! The unit holds together: fixtures read without Python, weights load
-//! digest-verified when present (skip with a message when absent — the
-//! oracle-test pattern the glossql suites use).
+//! when present (skip with a message when absent — the oracle-test
+//! pattern the glossql suites use), and the local weights match the
+//! pinned digests. Digest verification lives here, at fixture time —
+//! the runtime loader does not hash.
 
 use std::path::Path;
 
@@ -37,7 +39,7 @@ fn fixtures_are_readable_and_shaped() {
 }
 
 #[test]
-fn weights_load_and_verify() {
+fn weights_load() {
     if !ws().join("weights/tabicl-regressor.safetensors").exists() {
         eprintln!("skipping: run verify/python/convert_weights.py first");
         return;
@@ -48,6 +50,35 @@ fn weights_load_and_verify() {
             ckpt.tensors.len() > 100,
             "{which}: expected a full state dict, got {}",
             ckpt.tensors.len()
+        );
+    }
+}
+
+/// Fixture-time provenance gate: the local weights match the digests
+/// `convert_weights.py` pinned into `fixtures/DIGESTS`. A packaged
+/// build runs the same check before baking bytes into a binary or
+/// image; the runtime loader itself no longer hashes.
+#[test]
+fn weights_match_pinned_digests() {
+    if !ws().join("weights/tabicl-regressor.safetensors").exists() {
+        eprintln!("skipping: run verify/python/convert_weights.py first");
+        return;
+    }
+    let digests: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(ws().join("fixtures/DIGESTS")).unwrap())
+            .unwrap();
+    for which in ["regressor", "classifier"] {
+        use sha2::{Digest, Sha256};
+        let bytes =
+            std::fs::read(ws().join(format!("weights/tabicl-{which}.safetensors"))).unwrap();
+        let mut h = Sha256::new();
+        h.update(&bytes);
+        let actual = hex::encode(h.finalize());
+        let expected = digests[which]["sha256"].as_str().unwrap();
+        assert_eq!(
+            actual, expected,
+            "{which}: weights digest mismatch — re-run \
+             verify/python/convert_weights.py or restore the pinned weights"
         );
     }
 }

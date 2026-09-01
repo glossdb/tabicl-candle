@@ -33,8 +33,8 @@ verify/
                         _checkpoints.py      checkpoint download/cache
   experiments/        unpublished crate: E-suite replays (stage 3),
                       readout.rs, their fixtures
-fixtures/             DIGESTS only — pinned weight digests, read by the
-                      loader (dies with the digest mechanism)
+fixtures/             DIGESTS only — pinned weight digests, checked by
+                      the load suite at test time (never at runtime)
 weights/              local only, gitignored (see weights policy)
 ```
 
@@ -64,8 +64,13 @@ fixtures; tests that need converted weights skip with a message when
 
 - Checkpoints (jingang/TabICL v2, ~110 MB each) are never in git.
 - `convert_weights.py` converts the torch checkpoints to safetensors
-  under `weights/`, pins sha256 digests into `fixtures/DIGESTS`
-  (committed), and the loader verifies them.
+  under `weights/` and pins sha256 digests into `fixtures/DIGESTS`
+  (committed).
+- Digest verification happens where the bytes enter, not on every
+  load: the load suite checks the local weights against the pinned
+  digests at test time, and a packaged build verifies before baking
+  (`load_bytes` carries bytes the build already checked). The runtime
+  loader does not hash.
 - Local runs: weights are cached under `weights/` once and reused.
 - **Containers bake the weights in.** An image build runs the
   conversion (or copies a converted `weights/`) at build time — a
