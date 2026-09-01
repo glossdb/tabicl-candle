@@ -113,14 +113,19 @@ the local forward is deleted (not kept in parallel).
 
 ## Donation targets
 
-- **candle-core `sort.rs` fix.** Verified still live in 0.11: `cpu_fwd` /
-  `asort` chunks the full storage slice from index 0, ignoring
-  `layout.start_offset()`, while the CUDA path correctly slices by
-  `contiguous_offsets()`. Metal is correct. ~5-line fix (mirror the CUDA
-  slicing, bail on non-contiguous) plus an edge-case test: argsort a view
-  with a nonzero offset. Kills the workaround in `quantile.rs` and its
-  regression test. Note: an indexing bug — the right lesson is adversarial
-  edge-case unit tests, not tolerance tightness.
+- **candle-core `sort.rs` fix — overtaken by upstream (2026-09-01).**
+  The 0.11.0 release carries the bug (`asort` chunks the full storage
+  slice from index 0, ignoring `layout.start_offset()`; CUDA slices by
+  `contiguous_offsets()`; Metal correct), but candle main fixed it on
+  2026-08-14 — PR #3875, merged after the 0.11.0 release — with exactly
+  the fix and edge-case test this doc prescribed (slice by
+  `contiguous_offsets()`, bail on non-contiguous; `narrow`'d offset-view
+  `sort_last_dim` test). Validated against our suite via
+  `[patch.crates-io]` on main: offset-view regression test, quantile
+  parity, both forwards, and the bands suite (the original exposure) all
+  green with the workaround deleted. The `quantile.rs` workaround stays
+  until a release ships the fix. Note: an indexing bug — the right
+  lesson is adversarial edge-case unit tests, not tolerance tightness.
 - **candle-transformers `models/tabicl.rs`.** Groups 1+2 as one file in
   their convention. No tabular model exists there today. Technical
   justification for a native port: QASSMax bakes `log(train_size)` into
@@ -278,7 +283,12 @@ reflected in code, tests, and README:
       see the corrected determinism record) — 2026-09-01: "Numerics: what is
       pinned and what travels" section; stability classes in the
       tabicl-inference crate docs
-- [ ] candle-core PR: argsort view-offset fix + edge-case test
+- [x] candle-core PR: argsort view-offset fix + edge-case test — overtaken
+      by upstream #3875 (merged 2026-08-14, post-0.11.0; identical fix and
+      test); nothing to submit
+- [ ] Delete the `quantile.rs` argsort workaround when a candle release
+      ships #3875 (validated 2026-09-01 against main: full suite green
+      without it)
 - [ ] Hub PR: safetensors + config.json to `jingang/TabICL`
 - [ ] candle-transformers PR: `models/tabicl.rs`; candle-examples: `examples/tabicl/`
 - [ ] After upstream lands: delete local forward, depend on candle-transformers
