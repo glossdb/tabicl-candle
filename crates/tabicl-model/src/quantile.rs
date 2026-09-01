@@ -5,7 +5,7 @@
 //! min(20, n/4) quantiles. `icdf` gives the bands; `mean` is the mean
 //! of the monotone quantiles (the model's `predict_stats("mean")`).
 
-use candle_core::{D, Tensor};
+use candle_core::{D, Result, Tensor};
 
 const TOL: f64 = 1e-6;
 const MIN_BETA: f64 = 0.01;
@@ -24,7 +24,7 @@ pub struct QuantileDist {
 
 impl QuantileDist {
     /// raw: (*batch, n) predicted quantiles, crossings allowed.
-    pub fn new(raw: &Tensor) -> anyhow::Result<Self> {
+    pub fn new(raw: &Tensor) -> Result<Self> {
         let n = raw.dim(D::Minus1)?;
         // candle 0.9's CPU argsort reads its input from storage index 0,
         // ignoring the view's start offset (candle-core sort.rs, asort) —
@@ -42,7 +42,7 @@ impl QuantileDist {
         // ln(1 - alpha) (right) over the outer k quantiles;
         // beta = |cov / var| clamped, then Q(a) = a_tail * ln(.) + b.
         let dev = raw.device();
-        let regress = |q_k: &Tensor, ln_x: &[f64]| -> anyhow::Result<Tensor> {
+        let regress = |q_k: &Tensor, ln_x: &[f64]| -> Result<Tensor> {
             let mean = ln_x.iter().sum::<f64>() / k as f64;
             let centered: Vec<f32> = ln_x.iter().map(|v| (v - mean) as f32).collect();
             let var = centered.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / k as f64;
@@ -88,7 +88,7 @@ impl QuantileDist {
     }
 
     /// Bands at the given levels: (*batch, alphas.len()).
-    pub fn icdf(&self, alphas: &[f64]) -> anyhow::Result<Tensor> {
+    pub fn icdf(&self, alphas: &[f64]) -> Result<Tensor> {
         let n = self.grid.len();
         let (alpha_l, alpha_r) = (self.grid[0], self.grid[n - 1]);
         let mut cols = Vec::with_capacity(alphas.len());
@@ -119,7 +119,7 @@ impl QuantileDist {
     }
 
     /// Mean of the monotone quantiles: (*batch).
-    pub fn mean(&self) -> anyhow::Result<Tensor> {
+    pub fn mean(&self) -> Result<Tensor> {
         Ok(self.quantiles.mean(D::Minus1)?)
     }
 
@@ -128,7 +128,7 @@ impl QuantileDist {
     /// chain-rule density orchestration uses per numerical conditional.
     /// Scalar per-element work, computed host-side in f32 with torch's
     /// exact branch conditions (f32 grid comparisons matter at knots).
-    pub fn log_prob(&self, z: &Tensor) -> anyhow::Result<Tensor> {
+    pub fn log_prob(&self, z: &Tensor) -> Result<Tensor> {
         const MIN_SLOPE: f32 = 1e-6;
         const MAX_SLOPE: f32 = 1e6;
         let tol = TOL as f32;

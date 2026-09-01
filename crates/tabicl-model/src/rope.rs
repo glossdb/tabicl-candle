@@ -3,7 +3,7 @@
 //! halves, freqs come from the checkpoint (`rope.freqs`, length
 //! head_dim/2) and cos/sin are tiled `[f, f]` across the full head dim.
 
-use candle_core::Tensor;
+use candle_core::{Result, Tensor};
 
 pub struct Rope {
     /// Inverse frequencies from the checkpoint, shape (head_dim / 2).
@@ -13,7 +13,7 @@ pub struct Rope {
 impl Rope {
     /// t: (batch, heads, len, head_dim) — rotates along the len axis
     /// with positions 0..len, exactly `rotate_queries_or_keys`.
-    pub fn apply(&self, t: &Tensor) -> anyhow::Result<Tensor> {
+    pub fn apply(&self, t: &Tensor) -> Result<Tensor> {
         let (_, _, len, hd) = t.dims4()?;
         let half = hd / 2;
         let pos = Tensor::arange(0f32, len as f32, t.device())?;

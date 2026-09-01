@@ -4,10 +4,11 @@
 //! in as the skip value, targets are added to the train prefix of
 //! every group, and the set transformer's output IS the embedding.
 
-use candle_core::{D, Tensor};
+use candle_core::{D, Result, Tensor};
+use candle_nn::{Linear, Module, VarBuilder};
 
 use crate::isab::Isab;
-use crate::nn::{Linear, SKIP_VALUE, TensorMap, one_hot_linear, skippable_linear};
+use crate::nn::{SKIP_VALUE, linear, one_hot_linear, skippable_linear};
 
 pub struct ColEmbedder {
     in_linear: Linear, // SkippableLinear(group_size -> E)
@@ -20,30 +21,23 @@ pub struct ColEmbedder {
 }
 
 impl ColEmbedder {
-    pub fn load(
-        tm: &TensorMap,
+    pub fn new(
         num_blocks: usize,
         num_heads: usize,
         max_classes: usize,
         group_size: usize,
         reserve_cls: usize,
-    ) -> anyhow::Result<Self> {
+        vb: VarBuilder,
+    ) -> Result<Self> {
         let blocks = (0..num_blocks)
-            .map(|i| {
-                Isab::load(
-                    tm,
-                    &format!("col_embedder.tf_col.blocks.{i}"),
-                    num_heads,
-                    true,
-                )
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        let in_linear = tm.linear("col_embedder.in_linear")?;
-        let embed_dim = in_linear.w.dim(0)?;
+            .map(|i| Isab::new(num_heads, true, vb.pp(format!("tf_col.blocks.{i}"))))
+            .collect::<Result<Vec<_>>>()?;
+        let in_linear = linear(&vb.pp("in_linear"))?;
+        let embed_dim = in_linear.weight().dim(0)?;
         Ok(Self {
             in_linear,
             blocks,
-            y_encoder: tm.linear("col_embedder.y_encoder")?,
+            y_encoder: linear(&vb.pp("y_encoder"))?,
             max_classes,
             group_size,
             reserve_cls,
@@ -52,7 +46,7 @@ impl ColEmbedder {
     }
 
     /// x: (B, T, H), y: (B, train_size) -> (B, T, H + reserve_cls, E).
-    pub fn forward(&self, x: &Tensor, y: &Tensor) -> anyhow::Result<Tensor> {
+    pub fn forward(&self, x: &Tensor, y: &Tensor) -> Result<Tensor> {
         let (b, t, h) = x.dims3()?;
         let train_size = y.dim(1)?;
 
@@ -105,9 +99,8 @@ impl ColEmbedder {
         }
 
         // affine=false: the transformer output is the embedding.
-        Ok(src
-            .reshape((b, g, t, self.embed_dim))?
+        src.reshape((b, g, t, self.embed_dim))?
             .transpose(1, 2)?
-            .contiguous()?)
+            .contiguous()
     }
 }

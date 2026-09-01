@@ -4,10 +4,11 @@
 //! the decoder head maps to quantiles (regressor) or logits
 //! (classifier). Train mode returns the test rows.
 
-use candle_core::{D, Tensor};
+use candle_core::{D, Result, Tensor};
+use candle_nn::{LayerNorm, Linear, Module, VarBuilder};
 
 use crate::attention::{Block, Kv};
-use crate::nn::{LayerNorm, Linear, TensorMap, one_hot_linear};
+use crate::nn::{layer_norm, linear, one_hot_linear};
 
 pub struct IclPredictor {
     blocks: Vec<Block>,
@@ -19,34 +20,27 @@ pub struct IclPredictor {
 }
 
 impl IclPredictor {
-    pub fn load(
-        tm: &TensorMap,
+    pub fn new(
         num_blocks: usize,
         num_heads: usize,
         max_classes: usize,
-    ) -> anyhow::Result<Self> {
+        vb: VarBuilder,
+    ) -> Result<Self> {
         let blocks = (0..num_blocks)
-            .map(|i| {
-                Block::load(
-                    tm,
-                    &format!("icl_predictor.tf_icl.blocks.{i}"),
-                    num_heads,
-                    true,
-                )
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
+            .map(|i| Block::new(num_heads, true, vb.pp(format!("tf_icl.blocks.{i}"))))
+            .collect::<Result<Vec<_>>>()?;
         Ok(Self {
             blocks,
-            ln: tm.layer_norm("icl_predictor.ln")?,
-            y_encoder: tm.linear("icl_predictor.y_encoder")?,
-            decoder0: tm.linear("icl_predictor.decoder.0")?,
-            decoder2: tm.linear("icl_predictor.decoder.2")?,
+            ln: layer_norm(&vb.pp("ln"))?,
+            y_encoder: linear(&vb.pp("y_encoder"))?,
+            decoder0: linear(&vb.pp("decoder.0"))?,
+            decoder2: linear(&vb.pp("decoder.2"))?,
             max_classes,
         })
     }
 
     /// r: (B, T, D), y: (B, train_size) -> (B, T - train_size, out_dim).
-    pub fn forward(&self, r: &Tensor, y: &Tensor) -> anyhow::Result<Tensor> {
+    pub fn forward(&self, r: &Tensor, y: &Tensor) -> Result<Tensor> {
         let (_, t, _) = r.dims3()?;
         let train_size = y.dim(1)?;
 
@@ -66,6 +60,6 @@ impl IclPredictor {
         let out = self
             .decoder2
             .forward(&self.decoder0.forward(&x)?.gelu_erf()?)?;
-        Ok(out.narrow(1, train_size, t - train_size)?.contiguous()?)
+        out.narrow(1, train_size, t - train_size)?.contiguous()
     }
 }

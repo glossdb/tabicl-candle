@@ -1,96 +1,50 @@
-//! Small primitives shared by every stage. Everything is fp32 and
-//! mirrors torch semantics exactly: LayerNorm uses biased variance and
-//! eps 1e-5, GELU is the erf form (torch's default, not tanh-approx).
+//! The checkpoint's non-standard pieces and its loading convention.
+//! Forward math is candle-nn's (`Linear`, `LayerNorm` at torch
+//! defaults: biased variance, eps 1e-5; GELU is the erf form via
+//! `gelu_erf`). What stays custom: the skip protocol shared by the
+//! embedding and ISAB, torch's OneHotAndLinear, and shape-free loading
+//! — the port never hardcodes dimensions, the checkpoint says what it
+//! is, so layers read their shapes off the tensors instead of a config.
 
-use candle_core::{D, Tensor};
+use candle_core::{D, Result, Tensor};
+use candle_nn::{LayerNorm, Linear, Module, VarBuilder};
 
 pub const SKIP_VALUE: f64 = -100.0;
 
-/// The checkpoint's tensors, with lookups that name what's missing.
-pub struct TensorMap(pub std::collections::HashMap<String, Tensor>);
-
-impl TensorMap {
-    pub fn get(&self, name: &str) -> anyhow::Result<Tensor> {
-        self.0
-            .get(name)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("checkpoint has no tensor named {name}"))
-    }
-
-    pub fn linear(&self, prefix: &str) -> anyhow::Result<Linear> {
-        Ok(Linear {
-            w: self.get(&format!("{prefix}.weight"))?,
-            b: Some(self.get(&format!("{prefix}.bias"))?),
-        })
-    }
-
-    pub fn layer_norm(&self, prefix: &str) -> anyhow::Result<LayerNorm> {
-        // bias_free_ln=true in both shipped checkpoints; a bias tensor,
-        // if a future checkpoint carries one, is picked up.
-        Ok(LayerNorm {
-            w: self.get(&format!("{prefix}.weight"))?,
-            b: self.0.get(&format!("{prefix}.bias")).cloned(),
-        })
-    }
+/// Torch nn.Linear (weight stored (out, in), bias always present) read
+/// off the tensors at `vb`'s prefix.
+pub fn linear(vb: &VarBuilder) -> Result<Linear> {
+    Ok(Linear::new(
+        vb.get_unchecked("weight")?,
+        Some(vb.get_unchecked("bias")?),
+    ))
 }
 
-/// Torch nn.Linear: y = x W^T + b, weight stored (out, in).
-pub struct Linear {
-    pub w: Tensor,
-    pub b: Option<Tensor>,
-}
-
-impl Linear {
-    /// x: (..., in) -> (..., out); flattens batch dims for the matmul.
-    pub fn forward(&self, x: &Tensor) -> anyhow::Result<Tensor> {
-        let dims = x.dims().to_vec();
-        let (n_in, n_out) = (self.w.dim(1)?, self.w.dim(0)?);
-        let n: usize = dims[..dims.len() - 1].iter().product();
-        let x2 = x.contiguous()?.reshape((n, n_in))?;
-        let mut y = x2.matmul(&self.w.t()?)?;
-        if let Some(b) = &self.b {
-            y = y.broadcast_add(b)?;
-        }
-        let mut out_dims = dims;
-        *out_dims.last_mut().unwrap() = n_out;
-        Ok(y.reshape(out_dims)?)
-    }
-}
-
-pub struct LayerNorm {
-    pub w: Tensor,
-    pub b: Option<Tensor>,
-}
-
-impl LayerNorm {
-    pub fn forward(&self, x: &Tensor) -> anyhow::Result<Tensor> {
-        let mu = x.mean_keepdim(D::Minus1)?;
-        let xc = x.broadcast_sub(&mu)?;
-        let var = xc.sqr()?.mean_keepdim(D::Minus1)?;
-        let mut y = xc
-            .broadcast_div(&(var + 1e-5)?.sqrt()?)?
-            .broadcast_mul(&self.w)?;
-        if let Some(b) = &self.b {
-            y = y.broadcast_add(b)?;
-        }
-        Ok(y)
-    }
+/// LayerNorm at torch defaults; the bias follows the checkpoint's
+/// tensors (bias_free_ln differs between the shipped checkpoints).
+pub fn layer_norm(vb: &VarBuilder) -> Result<LayerNorm> {
+    let w = vb.get_unchecked("weight")?;
+    Ok(if vb.contains_tensor("bias") {
+        LayerNorm::new(w, vb.get_unchecked("bias")?, 1e-5)
+    } else {
+        LayerNorm::new_no_bias(w, 1e-5)
+    })
 }
 
 /// SkippableLinear: rows whose inputs are all SKIP_VALUE come out as
 /// SKIP_VALUE, everything else is a plain linear.
-pub fn skippable_linear(lin: &Linear, x: &Tensor) -> anyhow::Result<Tensor> {
+pub fn skippable_linear(lin: &Linear, x: &Tensor) -> Result<Tensor> {
     let y = lin.forward(x)?;
     // mask: 1.0 where the whole input row equals the skip value
     let dev = (x - SKIP_VALUE)?.abs()?.max_keepdim(D::Minus1)?;
     let mask = dev.eq(0f64)?.to_dtype(candle_core::DType::F32)?;
     let keep = (1.0 - &mask)?;
-    Ok(y.broadcast_mul(&keep)?
-        .broadcast_add(&(mask * SKIP_VALUE)?)?)
+    y.broadcast_mul(&keep)?
+        .broadcast_add(&(mask * SKIP_VALUE)?)
 }
 
 /// One-hot against `num_classes` then linear — torch's OneHotAndLinear.
-pub fn one_hot_linear(lin: &Linear, y: &Tensor, num_classes: usize) -> anyhow::Result<Tensor> {
+pub fn one_hot_linear(lin: &Linear, y: &Tensor, num_classes: usize) -> Result<Tensor> {
     let classes = Tensor::arange(0f32, num_classes as f32, y.device())?;
     let one_hot = y
         .unsqueeze(D::Minus1)?

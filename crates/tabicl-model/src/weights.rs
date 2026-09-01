@@ -1,12 +1,12 @@
-//! Weight loading: safetensors under `weights/`, digest-verified
-//! against the committed `fixtures/DIGESTS`. Weights are never in git
-//! and never fetched at container start — a container image bakes them
-//! in at build time (repo README, weights policy).
+//! Weight loading: safetensors under the workspace's `weights/`,
+//! digest-verified against the committed `fixtures/DIGESTS`. Weights
+//! are never in git and never fetched at container start — a container
+//! image bakes them in at build time (repo README, weights policy).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use candle_core::{Device, Tensor};
+use candle_core::{Device, Result, Tensor, bail};
 
 pub struct Checkpoint {
     pub tensors: HashMap<String, Tensor>,
@@ -15,7 +15,7 @@ pub struct Checkpoint {
 
 /// `which` is "classifier" or "regressor". `root` is this repo's
 /// layout: weights under `weights/`, digests at `fixtures/DIGESTS`.
-pub fn load(root: &Path, which: &str, device: &Device) -> anyhow::Result<Checkpoint> {
+pub fn load(root: &Path, which: &str, device: &Device) -> Result<Checkpoint> {
     load_from(
         &root.join("weights"),
         &root.join("fixtures/DIGESTS"),
@@ -27,16 +27,11 @@ pub fn load(root: &Path, which: &str, device: &Device) -> anyhow::Result<Checkpo
 /// Deployment layout: one flat directory holding the safetensors, the
 /// config json, and a `DIGESTS` file — what a consuming server ships
 /// (and a container bakes) without carrying this repo's shape.
-pub fn load_dir(dir: &Path, which: &str, device: &Device) -> anyhow::Result<Checkpoint> {
+pub fn load_dir(dir: &Path, which: &str, device: &Device) -> Result<Checkpoint> {
     load_from(dir, &dir.join("DIGESTS"), which, device)
 }
 
-fn load_from(
-    dir: &Path,
-    digests: &Path,
-    which: &str,
-    device: &Device,
-) -> anyhow::Result<Checkpoint> {
+fn load_from(dir: &Path, digests: &Path, which: &str, device: &Device) -> Result<Checkpoint> {
     let st = dir.join(format!("tabicl-{which}.safetensors"));
     verify_digest(digests, which, &st)?;
     let tensors = candle_core::safetensors::load(&st, device)?;
@@ -49,28 +44,26 @@ fn load_from(
 /// binary itself (`include_bytes!`), verified against the pinned
 /// digests by that binary's build — there is no file left to verify
 /// at load time.
-pub fn load_bytes(
-    safetensors: &[u8],
-    config_json: &str,
-    device: &Device,
-) -> anyhow::Result<Checkpoint> {
+pub fn load_bytes(safetensors: &[u8], config_json: &str, device: &Device) -> Result<Checkpoint> {
     let tensors = candle_core::safetensors::load_buffer(safetensors, device)?;
     let config = crate::config::TabIclConfig::from_json(config_json)?;
     Ok(Checkpoint { tensors, config })
 }
 
-fn verify_digest(digests: &Path, which: &str, st: &PathBuf) -> anyhow::Result<()> {
-    let digests: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(digests)?)?;
-    let expected = digests[which]["sha256"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("no pinned digest for {which}"))?;
+fn verify_digest(digests: &Path, which: &str, st: &PathBuf) -> Result<()> {
+    let digests: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(digests)?)
+        .map_err(candle_core::Error::wrap)?;
+    let Some(expected) = digests[which]["sha256"].as_str() else {
+        bail!("no pinned digest for {which}");
+    };
     let bytes = std::fs::read(st)?;
     let actual = sha256_hex(&bytes);
-    anyhow::ensure!(
-        actual == expected,
-        "weights digest mismatch for {which}: expected {expected}, got {actual} — \
-         re-run verify/python/convert_weights.py or restore the pinned weights"
-    );
+    if actual != expected {
+        bail!(
+            "weights digest mismatch for {which}: expected {expected}, got {actual} — \
+             re-run verify/python/convert_weights.py or restore the pinned weights"
+        );
+    }
     Ok(())
 }
 

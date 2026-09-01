@@ -6,10 +6,11 @@
 //! everything and overwriting the skipped rows is elementwise identical
 //! because batch elements never mix.
 
-use candle_core::{D, Tensor};
+use candle_core::{D, Result, Tensor};
+use candle_nn::VarBuilder;
 
 use crate::attention::{Block, Kv};
-use crate::nn::{SKIP_VALUE, TensorMap};
+use crate::nn::SKIP_VALUE;
 
 pub struct Isab {
     attn1: Block,
@@ -18,22 +19,17 @@ pub struct Isab {
 }
 
 impl Isab {
-    pub fn load(
-        tm: &TensorMap,
-        prefix: &str,
-        num_heads: usize,
-        ssmax: bool,
-    ) -> anyhow::Result<Self> {
+    pub fn new(num_heads: usize, ssmax: bool, vb: VarBuilder) -> Result<Self> {
         Ok(Self {
-            attn1: Block::load(tm, &format!("{prefix}.multihead_attn1"), num_heads, ssmax)?,
-            attn2: Block::load(tm, &format!("{prefix}.multihead_attn2"), num_heads, false)?,
-            ind_vectors: tm.get(&format!("{prefix}.ind_vectors"))?,
+            attn1: Block::new(num_heads, ssmax, vb.pp("multihead_attn1"))?,
+            attn2: Block::new(num_heads, false, vb.pp("multihead_attn2"))?,
+            ind_vectors: vb.get_unchecked("ind_vectors")?,
         })
     }
 
     /// src: (batch, T, E); inducing points see only the first
     /// `train_size` rows.
-    pub fn forward(&self, src: &Tensor, train_size: usize) -> anyhow::Result<Tensor> {
+    pub fn forward(&self, src: &Tensor, train_size: usize) -> Result<Tensor> {
         let (b, _, e) = src.dims3()?;
         let (num_inds, _) = self.ind_vectors.dims2()?;
         let ind = self
@@ -57,8 +53,7 @@ impl Isab {
             .to_dtype(candle_core::DType::F32)?
             .reshape((b, 1, 1))?;
         let keep = (1.0 - &mask)?;
-        Ok(out
-            .broadcast_mul(&keep)?
-            .broadcast_add(&(mask * SKIP_VALUE)?)?)
+        out.broadcast_mul(&keep)?
+            .broadcast_add(&(mask * SKIP_VALUE)?)
     }
 }

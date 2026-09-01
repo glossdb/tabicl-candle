@@ -4,6 +4,7 @@
 
 use std::path::Path;
 
+use candle_core::Result;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -15,12 +16,12 @@ pub struct TabIclConfig {
 }
 
 impl TabIclConfig {
-    pub fn load(path: &Path) -> anyhow::Result<Self> {
-        Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
+    pub fn load(path: &Path) -> Result<Self> {
+        Self::from_json(&std::fs::read_to_string(path)?)
     }
 
-    pub fn from_json(json: &str) -> anyhow::Result<Self> {
-        Ok(serde_json::from_str(json)?)
+    pub fn from_json(json: &str) -> Result<Self> {
+        serde_json::from_str(json).map_err(candle_core::Error::wrap)
     }
 
     pub fn int(&self, key: &str) -> Option<i64> {

@@ -16,7 +16,7 @@ pub mod config;
 pub mod embedding; // feature grouping, SkippableLinear, y-encoders
 pub mod icl; // ICL transformer, train-prefix attention
 pub mod isab; // induced self-attention blocks
-pub mod nn; // Linear / LayerNorm / one-hot, torch semantics
+pub mod nn; // skip protocol, one-hot, shape-free candle-nn loaders
 pub mod quantile; // regressor read-out: raw quantiles -> bands
 pub mod rope;
 pub mod row; // row transformer, non-interleaved RoPE, CLS

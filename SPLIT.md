@@ -259,7 +259,11 @@ reflected in code, tests, and README:
 
 - [x] Step 1: mechanical workspace split (pure moves, one commit) —
       2026-09-01, branch `workspace-split`
-- [ ] Step 2: rewrite `tabicl-model` onto VarBuilder / candle-nn / `candle::Result`
+- [x] Step 2: rewrite `tabicl-model` onto VarBuilder / candle-nn /
+      `candle::Result` — 2026-09-01; `TabIcl::new(&config, vb)` is the
+      donation-shaped constructor, `from_checkpoint` stays as convenience;
+      `nn.rs` keeps only the custom pieces (skip protocol, OneHotAndLinear,
+      shape-free loaders); every gate held, exact discrete asserts included
 - [ ] Drop rayon from `unsupervised.rs`; expose task decomposition instead
 - [ ] Drop anyhow from public APIs; drop sha2/hex from `[dependencies]`
 - [x] Move `readout.rs` + E-experiment tests/fixtures to `verify/experiments`

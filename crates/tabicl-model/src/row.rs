@@ -4,10 +4,11 @@
 //! tokens with RoPE, the last block queries only the CLS tokens, and
 //! the normalized CLS outputs concatenate into the row representation.
 
-use candle_core::Tensor;
+use candle_core::{Result, Tensor};
+use candle_nn::{LayerNorm, Module, VarBuilder};
 
 use crate::attention::{Block, Kv};
-use crate::nn::{LayerNorm, TensorMap};
+use crate::nn::layer_norm;
 use crate::rope::Rope;
 
 pub struct RowInteractor {
@@ -19,32 +20,25 @@ pub struct RowInteractor {
 }
 
 impl RowInteractor {
-    pub fn load(tm: &TensorMap, num_blocks: usize, num_heads: usize) -> anyhow::Result<Self> {
+    pub fn new(num_blocks: usize, num_heads: usize, vb: VarBuilder) -> Result<Self> {
         let blocks = (0..num_blocks)
-            .map(|i| {
-                Block::load(
-                    tm,
-                    &format!("row_interactor.tf_row.blocks.{i}"),
-                    num_heads,
-                    false,
-                )
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        let cls_tokens = tm.get("row_interactor.cls_tokens")?;
+            .map(|i| Block::new(num_heads, false, vb.pp(format!("tf_row.blocks.{i}"))))
+            .collect::<Result<Vec<_>>>()?;
+        let cls_tokens = vb.get_unchecked("cls_tokens")?;
         let num_cls = cls_tokens.dim(0)?;
         Ok(Self {
             blocks,
             cls_tokens,
-            out_ln: tm.layer_norm("row_interactor.out_ln")?,
+            out_ln: layer_norm(&vb.pp("out_ln"))?,
             rope: Rope {
-                freqs: tm.get("row_interactor.tf_row.rope.freqs")?,
+                freqs: vb.get_unchecked("tf_row.rope.freqs")?,
             },
             num_cls,
         })
     }
 
     /// emb: (B, T, G, E) -> (B, T, num_cls * E).
-    pub fn forward(&self, emb: &Tensor) -> anyhow::Result<Tensor> {
+    pub fn forward(&self, emb: &Tensor) -> Result<Tensor> {
         let (b, t, g, e) = emb.dims4()?;
         let cls = self
             .cls_tokens
@@ -63,6 +57,6 @@ impl RowInteractor {
         let q = x.narrow(1, 0, self.num_cls)?.contiguous()?;
         let cls_out = last.forward(&q, Kv::Cross(&x), Some(&self.rope))?;
         let cls_out = self.out_ln.forward(&cls_out)?;
-        Ok(cls_out.reshape((b, t, self.num_cls * e))?)
+        cls_out.reshape((b, t, self.num_cls * e))
     }
 }
