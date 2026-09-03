@@ -39,8 +39,7 @@ pub fn skippable_linear(lin: &Linear, x: &Tensor) -> Result<Tensor> {
     let dev = (x - SKIP_VALUE)?.abs()?.max_keepdim(D::Minus1)?;
     let mask = dev.eq(0f64)?.to_dtype(candle_core::DType::F32)?;
     let keep = (1.0 - &mask)?;
-    y.broadcast_mul(&keep)?
-        .broadcast_add(&(mask * SKIP_VALUE)?)
+    y.broadcast_mul(&keep)?.broadcast_add(&(mask * SKIP_VALUE)?)
 }
 
 /// One-hot against `num_classes` then linear — torch's OneHotAndLinear.

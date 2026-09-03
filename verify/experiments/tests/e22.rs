@@ -29,10 +29,7 @@ fn ws() -> &'static Path {
 
 #[test]
 fn e22_diagnosis_reproduces_recorded_accuracy() {
-    if !ws()
-        .join("weights/tabicl-classifier.safetensors")
-        .exists()
-    {
+    if !ws().join("weights/tabicl-classifier.safetensors").exists() {
         eprintln!("skipping: run verify/python/convert_weights.py first");
         return;
     }

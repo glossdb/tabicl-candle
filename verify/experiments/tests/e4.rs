@@ -89,7 +89,8 @@ fn predict_bands(
     test_rows: usize,
     device: &Device,
 ) -> Vec<Vec<f64>> {
-    let est = tabicl_inference::regressor::TabIclRegressor::fit(model, train_x, rows, cols, train_y);
+    let est =
+        tabicl_inference::regressor::TabIclRegressor::fit(model, train_x, rows, cols, train_y);
     let pred = est.predict(test_x, test_rows, device).unwrap();
     let q: Vec<f32> = pred
         .quantiles(&ALPHAS)

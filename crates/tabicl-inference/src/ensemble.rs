@@ -14,8 +14,8 @@
 
 use candle_core::{Device, Result, Tensor};
 
-use tabicl_model::quantile::QuantileDist;
 use crate::regressor::Preprocessor;
+use tabicl_model::quantile::QuantileDist;
 use tabicl_model::tabicl::TabIcl;
 
 /// One ensemble member: which pipeline, and the feature permutation

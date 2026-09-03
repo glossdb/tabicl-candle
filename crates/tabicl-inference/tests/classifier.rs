@@ -88,10 +88,7 @@ fn encoding_and_preprocessing_match_sklearn() {
 }
 
 fn run_end_to_end(device: &Device, tolerance: f32) {
-    if !ws()
-        .join("weights/tabicl-classifier.safetensors")
-        .exists()
-    {
+    if !ws().join("weights/tabicl-classifier.safetensors").exists() {
         eprintln!("skipping: run verify/python/convert_weights.py first");
         return;
     }

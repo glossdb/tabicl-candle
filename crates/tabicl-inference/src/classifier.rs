@@ -57,12 +57,7 @@ impl<'a> TabIclClassifier<'a> {
     /// Returns row-major (rows, n_classes) probabilities, columns in
     /// `classes` order. The softmax runs host-side in f32, as the
     /// wrapper's numpy helper does after the f32 logits leave torch.
-    pub fn predict_proba(
-        &self,
-        x: &[f64],
-        rows: usize,
-        device: &Device,
-    ) -> Result<Vec<f32>> {
+    pub fn predict_proba(&self, x: &[f64], rows: usize, device: &Device) -> Result<Vec<f32>> {
         let k = self.prep.n_kept();
         let t = self.prep.n_train + rows;
         let mut all = self.prep.x_train.clone();
