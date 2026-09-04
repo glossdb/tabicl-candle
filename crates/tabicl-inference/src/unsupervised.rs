@@ -22,8 +22,8 @@
 use candle_core::{Device, Result, Tensor};
 
 use crate::classifier::TabIclClassifier;
-use tabicl_model::quantile::QuantileDist;
 use crate::regressor::TabIclRegressor;
+use tabicl_model::quantile::QuantileDist;
 use tabicl_model::tabicl::TabIcl;
 
 /// Features with fewer non-NaN training rows contribute nothing (the
